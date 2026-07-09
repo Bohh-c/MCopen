@@ -10,11 +10,14 @@ sys.path.insert(0, PROJECT_ROOT)
 from PyQt5.QtWidgets import QApplication
 
 from gui.main_window import MainWindow
+from core.base import init_launcher_watermark
 
 
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("MCOpen")
+
+    init_launcher_watermark(PROJECT_ROOT)
 
     window = MainWindow()
     window.apply_theme(app)

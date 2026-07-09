@@ -1,6 +1,6 @@
 from core.launcher import VersionParser, AccountManager, JavaLaunchEngine, UnifiedLaunchCore
 from core.e4mc_manager import E4MCManager
-from core.basher import check_and_create_mco
+from core.base import check_and_create_mco
 
 
 def parse_version(game_root, version_id, ver_folder_name=None, json_filename=None, ver_type="vanilla", progress_callback=None):

@@ -9,7 +9,7 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 
 from core.multi_downloader import MultiDownloader
-from core.basher import check_and_create_mco
+from core.base import check_resource_downloaded, mark_resource_downloaded
 
 try:
     from PyQt5.QtCore import QObject, pyqtSignal
@@ -363,9 +363,7 @@ class VersionParser:
         cfg["jar_path"] = os.path.join(self.ver_dir, real_ver_id, f"{real_ver_id}.jar")
         cfg["ver_type"] = ver_type
 
-        mco_exists = check_and_create_mco(real_ver_id, self.game_root)
-
-        if not mco_exists:
+        if not check_resource_downloaded(self.game_root):
             if progress_callback:
                 progress_callback(20, "首次启动，正在下载依赖库...")
             self.download_libraries(raw["libraries"], progress_callback)
@@ -373,6 +371,10 @@ class VersionParser:
             if progress_callback:
                 progress_callback(60, "正在下载资源文件...")
             self.download_assets(cfg["assets_id"], asset_url, progress_callback)
+
+            mark_resource_downloaded(self.game_root)
+            if progress_callback:
+                progress_callback(100, "资源下载完成")
         else:
             if progress_callback:
                 progress_callback(30, "已缓存，跳过资源下载...")
