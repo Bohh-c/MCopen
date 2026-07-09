@@ -1,4 +1,4 @@
-"""联机大厅页面 - EasyTier P2P 虚拟局域网联机"""
+"""联机大厅页面 - EasyTier P2P 虚拟局域网联机 (已检修)"""
 
 import os
 import sys
@@ -6,6 +6,7 @@ import subprocess
 import threading
 import re
 import time
+import socket
 from pathlib import Path
 
 from PyQt5.QtCore import Qt, pyqtSignal, QObject, QTimer
@@ -26,6 +27,7 @@ class EasyTierWorker(QObject):
     status_signal = pyqtSignal(bool, str)
     ip_signal = pyqtSignal(str)
     peers_updated = pyqtSignal(list)
+    error_signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -41,22 +43,47 @@ class EasyTierWorker(QObject):
         self.process = None
         self.running = False
         self._stop_flag = False
-        self._rpc_port = 21011
-        self._listen_port = 21010
+        self._lock = threading.Lock()
+        self._rpc_port = 22015
+        self._listen_port = 22014
         self._role = ""
         self._ip_candidates = []
         self._ip_index = 0
         self._peers = []
         self._poll_timer = None
+        self.virtual_ip = ""
+        self._exit_code = None
 
     def check_binaries(self):
         if not self.core_path.exists():
             self.log_signal.emit(f"[EasyTier] Missing easytier-core in {self.tools_dir}")
+            self.error_signal.emit(f"Missing easytier-core in {self.tools_dir}")
             return False
         if not self.cli_path.exists():
             self.log_signal.emit(f"[EasyTier] Missing easytier-cli in {self.tools_dir}")
+            self.error_signal.emit(f"Missing easytier-cli in {self.tools_dir}")
             return False
         return True
+
+    def _is_port_open(self, port, timeout=1):
+        """检查本地端口是否已被占用"""
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(timeout)
+                result = s.connect_ex(("127.0.0.1", port))
+                return result == 0
+        except Exception:
+            return False
+
+    def _find_available_rpc_port(self):
+        """寻找一个可用的RPC端口，避免冲突"""
+        for offset in range(0, 50):
+            port = self._rpc_port + offset
+            if not self._is_port_open(port):
+                self._rpc_port = port
+                self._listen_port = port - 1
+                return True
+        return False
 
     def check_firewall(self, parent_widget=None):
         if sys.platform != "win32":
@@ -92,64 +119,69 @@ class EasyTierWorker(QObject):
     def start_host(self, network_name, network_secret, hostname=None, parent_widget=None, enable_relay=True):
         if not self.check_firewall(parent_widget):
             return False
-        self._role = "host"
-        self._ip_index = 0
-        self._ip_candidates = []
-        return self._start_node(network_name, network_secret, hostname, enable_relay)
+        return self._do_start("host", network_name, network_secret, hostname, enable_relay)
 
     def start_join(self, network_name, network_secret, hostname=None, parent_widget=None, enable_relay=True):
         if not self.check_firewall(parent_widget):
             return False
-        self._role = "join"
-        self._ip_index = 0
-        self._ip_candidates = []
-        return self._start_node(network_name, network_secret, hostname, enable_relay)
+        return self._do_start("join", network_name, network_secret, hostname, enable_relay)
 
-    def _start_node(self, network_name, network_secret, hostname=None, enable_relay=True):
-        if not self.check_binaries():
-            self.status_signal.emit(False, "EasyTier core missing")
-            return False
-        if self.running:
-            self.log_signal.emit("[EasyTier] Node already running")
-            return True
+    def _do_start(self, role, network_name, network_secret, hostname=None, enable_relay=True):
+        with self._lock:
+            if self.running:
+                self.log_signal.emit("[EasyTier] Node already running")
+                return True
+            if not self.check_binaries():
+                return False
 
-        self._stop_flag = False
-        cmd = [
-            str(self.core_path),
-            "--network-name", network_name,
-            "--network-secret", network_secret,
-            "--listeners", f"tcp://0.0.0.0:{self._listen_port},udp://0.0.0.0:{self._listen_port}",
-            "--rpc-portal", f"127.0.0.1:{self._rpc_port}",
-        ]
-        if not enable_relay:
-            cmd.append("--p2p-only")
-        if hostname:
-            cmd.extend(["--hostname", hostname])
+            if not self._find_available_rpc_port():
+                self.error_signal.emit("No available RPC port found")
+                return False
 
-        self.log_signal.emit(f"[EasyTier] Starting node: {network_name} ({self._role})")
+            self._role = role
+            self._ip_index = 0
+            self._ip_candidates = []
+            self._exit_code = None
+            self._stop_flag = False
 
-        startupinfo = None
-        if sys.platform == "win32":
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            cmd = [
+                str(self.core_path),
+                "--network-name", network_name,
+                "--network-secret", network_secret,
+                "--listeners", f"tcp://0.0.0.0:{self._listen_port},udp://0.0.0.0:{self._listen_port}",
+                "--rpc-portal", f"127.0.0.1:{self._rpc_port}",
+            ]
+            if not enable_relay:
+                cmd.append("--p2p-only")
+            if hostname:
+                cmd.extend(["--hostname", hostname])
 
-        try:
-            self.process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                startupinfo=startupinfo, text=False, bufsize=1
-            )
-            self.running = True
-            self.status_signal.emit(True, tr("mp_starting"))
-            threading.Thread(target=self._read_output, daemon=False).start()
-            threading.Thread(target=self._wait_for_ip, daemon=False).start()
-            self.log_signal.emit("[EasyTier] Node started")
-            if self._role == "host":
+            self.log_signal.emit(f"[EasyTier] Starting node: {network_name} ({role})")
+            self.log_signal.emit(f"[EasyTier] RPC port: {self._rpc_port}")
+
+            startupinfo = None
+            if sys.platform == "win32":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+            try:
+                self.process = subprocess.Popen(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    startupinfo=startupinfo, text=False, bufsize=0
+                )
+                self.running = True
+                self.status_signal.emit(True, tr("mp_starting"))
+                threading.Thread(target=self._read_output, daemon=True).start()
+                threading.Thread(target=self._wait_for_ip, daemon=True).start()
+                self.log_signal.emit("[EasyTier] Node started")
                 self._start_peer_polling()
-            return True
-        except Exception as e:
-            self.log_signal.emit(f"[EasyTier] Start failed: {e}")
-            self.status_signal.emit(False, str(e))
-            return False
+                return True
+            except Exception as e:
+                self.log_signal.emit(f"[EasyTier] Start failed: {e}")
+                self.status_signal.emit(False, str(e))
+                self.error_signal.emit(str(e))
+                self.running = False
+                return False
 
     def _start_peer_polling(self):
         if self._poll_timer is None:
@@ -183,31 +215,51 @@ class EasyTierWorker(QObject):
                     text = str(line)
                 if text:
                     self.log_signal.emit(f"[EasyTier] {text}")
-                if self.process.poll() is not None:
-                    break
         except Exception:
             pass
-        self.running = False
-        self.status_signal.emit(False, tr("mp_disconnected"))
+
+        with self._lock:
+            self._exit_code = self.process.poll() if self.process else None
+            self.running = False
+            self._stop_flag = True
+
         if self._poll_timer:
             self._poll_timer.stop()
             self._poll_timer = None
 
+        if self._exit_code is not None and self._exit_code != 0:
+            self.log_signal.emit(f"[EasyTier] Process exited with code {self._exit_code}")
+            self.status_signal.emit(False, f"{tr('mp_disconnected')} (code {self._exit_code})")
+            self.error_signal.emit(f"EasyTier exited with code {self._exit_code}")
+        else:
+            self.status_signal.emit(False, tr("mp_disconnected"))
+
     def _wait_for_ip(self):
-        time.sleep(3)
-        if not self._stop_flag:
+        """循环重试获取虚拟IP，最多等待30秒"""
+        max_wait = 30
+        interval = 1.5
+        elapsed = 0
+        while elapsed < max_wait and not self._stop_flag:
+            time.sleep(interval)
+            elapsed += interval
             ips = self._get_virtual_ips()
             if ips:
                 self.virtual_ip = ips[0]
                 self._ip_candidates = ips
                 self.ip_signal.emit(ips[0])
                 self.status_signal.emit(True, f"{tr('mp_connected')} - {ips[0]}")
+                return
+            if elapsed >= 6 and self._role == "join":
+                self.status_signal.emit(True, tr("mp_connecting"))
+                self.log_signal.emit("[EasyTier] Still connecting...")
+
+        if not self._stop_flag:
+            if self._role == "host":
+                self.status_signal.emit(True, tr("mp_connecting"))
+                self.log_signal.emit("[EasyTier] Waiting for peers...")
             else:
-                if self._role == "host":
-                    self.status_signal.emit(True, tr("mp_connecting"))
-                    self.log_signal.emit("[EasyTier] Waiting for peers...")
-                else:
-                    self.status_signal.emit(False, "Cannot join network, check room name/password")
+                self.status_signal.emit(False, "Cannot join network, check room name/password")
+                self.error_signal.emit("Join timeout: check room name/password/firewall")
 
     def _get_virtual_ips(self):
         if not self.cli_path.exists():
@@ -225,7 +277,7 @@ class EasyTierWorker(QObject):
                 match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
                 if match:
                     ip = match.group(1)
-                    if ip.startswith("10.") or ip.startswith("192.168."):
+                    if self._is_private_ip(ip):
                         ips.append(ip)
             return ips
         except Exception:
@@ -243,22 +295,41 @@ class EasyTierWorker(QObject):
             if result.returncode != 0:
                 return []
             lines = result.stdout.splitlines()
-            if len(lines) < 2:
-                return []
             peers = []
-            for line in lines[1:]:
+            header_skipped = False
+            for line in lines:
                 line = line.strip()
                 if not line:
+                    continue
+                if not header_skipped:
+                    if "virtual ip" in line.lower() or "hostname" in line.lower():
+                        header_skipped = True
                     continue
                 parts = line.split()
                 if len(parts) >= 2:
                     ip = parts[0] if parts[0] != "-" else None
                     hostname = parts[1] if len(parts) > 1 else "Unknown"
-                    if ip and ip.startswith("10."):
+                    if ip and self._is_private_ip(ip):
                         peers.append({"ip": ip, "hostname": hostname})
             return peers
         except Exception:
             return []
+
+    @staticmethod
+    def _is_private_ip(ip):
+        """检查是否为私有IP地址 (RFC1918)"""
+        if ip.startswith("10."):
+            return True
+        if ip.startswith("192.168."):
+            return True
+        if ip.startswith("172."):
+            try:
+                second = int(ip.split(".")[1])
+                if 16 <= second <= 31:
+                    return True
+            except (ValueError, IndexError):
+                pass
+        return False
 
     def get_next_ip(self):
         if not self._ip_candidates:
@@ -275,21 +346,27 @@ class EasyTierWorker(QObject):
         self._ip_candidates = self._get_virtual_ips()
 
     def stop_node(self):
-        self._stop_flag = True
-        if self.process and self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-            self.process = None
-        self.running = False
-        self._ip_index = 0
-        self._ip_candidates = []
-        self._peers = []
-        if self._poll_timer:
-            self._poll_timer.stop()
-            self._poll_timer = None
+        with self._lock:
+            self._stop_flag = True
+            if self.process and self.process.poll() is None:
+                try:
+                    self.process.terminate()
+                    try:
+                        self.process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        self.process.kill()
+                        self.process.wait(timeout=1)
+                except Exception as e:
+                    self.log_signal.emit(f"[EasyTier] Stop error: {e}")
+                finally:
+                    self.process = None
+            self.running = False
+            self._ip_index = 0
+            self._ip_candidates = []
+            self._peers = []
+            if self._poll_timer:
+                self._poll_timer.stop()
+                self._poll_timer = None
         self.log_signal.emit("[EasyTier] Node stopped")
         self.status_signal.emit(False, tr("mp_not_running"))
         return True
@@ -303,6 +380,7 @@ class MultiplayerPage(QWidget):
         self.worker.status_signal.connect(self._on_status)
         self.worker.ip_signal.connect(self._on_ip)
         self.worker.peers_updated.connect(self._on_peers_updated)
+        self.worker.error_signal.connect(self._on_error)
         self._current_port = "25565"
         self._build_ui()
 
@@ -488,6 +566,13 @@ class MultiplayerPage(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(scroll_area)
 
+    def _reset_ui(self):
+        self.et_host_btn.setEnabled(True)
+        self.et_join_btn.setEnabled(True)
+        self.et_stop_btn.setEnabled(False)
+        self.et_try_btn.setVisible(False)
+        self.et_copy_btn.setVisible(False)
+
     def _start_host(self):
         room = self.et_room_edit.text().strip()
         password = self.et_password_edit.text().strip()
@@ -514,8 +599,7 @@ class MultiplayerPage(QWidget):
         self._current_port = port
         success = self.worker.start_host(room, password, "MCOpen_Host", self, enable_relay)
         if not success:
-            self.et_host_btn.setEnabled(True)
-            self.et_join_btn.setEnabled(True)
+            self._reset_ui()
             self.et_status_label.setText("Failed")
 
     def _start_join(self):
@@ -536,8 +620,7 @@ class MultiplayerPage(QWidget):
 
         success = self.worker.start_join(room, password, "MCOpen_Join", self, enable_relay)
         if not success:
-            self.et_host_btn.setEnabled(True)
-            self.et_join_btn.setEnabled(True)
+            self._reset_ui()
             self.et_status_label.setText("Failed")
         else:
             QMessageBox.information(self, tr("mp_join_tutorial_title"), tr("mp_join_tutorial"))
@@ -545,13 +628,16 @@ class MultiplayerPage(QWidget):
     def _stop(self):
         self.worker.stop_node()
 
+    def _on_error(self, msg):
+        self._append_log(f"[ERROR] {msg}")
+
     def _on_status(self, running, msg):
         if running:
             self.et_status_label.setText(msg)
             self.et_host_btn.setEnabled(False)
             self.et_join_btn.setEnabled(False)
             self.et_stop_btn.setEnabled(True)
-            if tr("mp_connected") in msg or "10." in msg:
+            if tr("mp_connected") in msg or "10." in msg or "172." in msg or "192.168." in msg:
                 self.et_try_btn.setVisible(True)
                 self.et_copy_btn.setVisible(True)
                 self.et_status_label.setStyleSheet(
@@ -566,11 +652,7 @@ class MultiplayerPage(QWidget):
                 )
                 self.status_badge.set_status("info", tr("mp_connecting"))
         else:
-            self.et_host_btn.setEnabled(True)
-            self.et_join_btn.setEnabled(True)
-            self.et_stop_btn.setEnabled(False)
-            self.et_try_btn.setVisible(False)
-            self.et_copy_btn.setVisible(False)
+            self._reset_ui()
             self.et_status_label.setText(msg)
             self.et_status_label.setStyleSheet(
                 "font-size: 12px; padding: 6px 12px; background: #dc3545; color: #ffffff; border-radius: 4px;"
