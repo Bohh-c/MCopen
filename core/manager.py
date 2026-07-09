@@ -88,23 +88,23 @@ class EasyTierManager(QObject):
         self._listen_port = listen_port
         self._rpc_port = rpc_port
 
-    def start_host(self, network_name, network_secret, hostname=None, parent_widget=None, enable_relay=True):
+    def start_host(self, network_name, network_secret, hostname=None, parent_widget=None, enable_relay=True, peer_addr=None):
         if not self.check_firewall(parent_widget):
             return False
         self._role = "host"
         self._ip_index = 0
         self._ip_candidates = []
-        return self.start_node(network_name, network_secret, hostname, enable_relay)
+        return self.start_node(network_name, network_secret, hostname, enable_relay, peer_addr)
 
-    def start_join(self, network_name, network_secret, hostname=None, parent_widget=None, enable_relay=True):
+    def start_join(self, network_name, network_secret, hostname=None, parent_widget=None, enable_relay=True, peer_addr=None):
         if not self.check_firewall(parent_widget):
             return False
         self._role = "join"
         self._ip_index = 0
         self._ip_candidates = []
-        return self.start_node(network_name, network_secret, hostname, enable_relay)
+        return self.start_node(network_name, network_secret, hostname, enable_relay, peer_addr)
 
-    def start_node(self, network_name, network_secret, hostname=None, enable_relay=True):
+    def start_node(self, network_name, network_secret, hostname=None, enable_relay=True, peer_addr=None):
         if not self.check_binaries():
             self.status_signal.emit(False, "EasyTier 内核缺失")
             return False
@@ -125,13 +125,16 @@ class EasyTierManager(QObject):
             "--rpc-portal", f"127.0.0.1:{self._rpc_port}",
         ]
 
+        if peer_addr and peer_addr.strip():
+            cmd.extend(["--peers", peer_addr.strip()])
+
         if not enable_relay:
             cmd.append("--p2p-only")
 
         if hostname:
             cmd.extend(["--hostname", hostname])
 
-        self.log_signal.emit(f"[EasyTier] 启动节点: {network_name} ({self._role})，中继转发: {'启用' if enable_relay else '禁用'}")
+        self.log_signal.emit(f"[EasyTier] 启动节点: {network_name} ({self._role})，公共节点: {peer_addr if peer_addr else '默认'}，中继转发: {'启用' if enable_relay else '禁用'}")
 
         startupinfo = None
         if sys.platform == "win32":
@@ -203,8 +206,11 @@ class EasyTierManager(QObject):
             self._poll_timer = None
 
     def _wait_for_ip(self):
-        time.sleep(3)
-        if not self._stop_flag:
+        max_attempts = 15
+        for attempt in range(max_attempts):
+            if self._stop_flag or not self.running:
+                self.status_signal.emit(False, "已取消")
+                return
             ips = self.get_virtual_ips()
             if ips:
                 self.virtual_ip = ips[0]
@@ -213,13 +219,15 @@ class EasyTierManager(QObject):
                 self.status_signal.emit(True, f"已连接，虚拟IP: {ips[0]}")
                 if len(ips) > 1:
                     self.log_signal.emit(f"[EasyTier] 备选IP: {', '.join(ips[1:])}")
-            else:
-                if self._role == "host":
-                    self.status_signal.emit(True, "等待其他成员加入...")
-                    self.log_signal.emit("[EasyTier] 当前仅房主在线，等待其他成员加入后自动分配IP")
-                else:
-                    self.status_signal.emit(False, "无法加入网络，请检查房间名和密码是否正确")
-                    self.log_signal.emit("[EasyTier] 加入者未能获取到IP，可能房间名/密码错误或房主未开房")
+                return
+            time.sleep(1)
+
+        if self._role == "host":
+            self.status_signal.emit(True, "等待其他成员加入...")
+            self.log_signal.emit("[EasyTier] 当前仅房主在线，等待其他成员加入后自动分配IP")
+        else:
+            self.status_signal.emit(False, "无法加入网络，请检查房间名和密码是否正确")
+            self.log_signal.emit("[EasyTier] 加入者未能获取到IP，可能房间名/密码错误或房主未开房")
 
     def get_virtual_ips(self):
         if not self.cli_path.exists():

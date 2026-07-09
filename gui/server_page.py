@@ -1,5 +1,3 @@
-"""服务器管理页面 - 本地Minecraft服务器管理"""
-
 import os
 import threading
 import subprocess
@@ -15,7 +13,6 @@ from PyQt5.QtGui import QFont
 from core.cli import get_project_root
 from core.downloader import download_server, fetch_version_manifest, find_version
 from gui.widgets import Card, SectionTitle, SubTitle, StatusBadge
-from gui.i18n import tr
 
 
 class ServerWorker(QObject):
@@ -42,7 +39,8 @@ class ServerWorker(QObject):
                 args, cwd=server_dir, env=env,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 stdin=subprocess.PIPE,
-                text=False, bufsize=1
+                text=False,
+                bufsize=1
             )
             self.status_signal.emit(True)
             while True:
@@ -51,16 +49,16 @@ class ServerWorker(QObject):
                     break
                 try:
                     text = line.decode('utf-8', errors='replace').rstrip()
-                except Exception:
+                except:
                     text = str(line)
                 if text:
                     self.log_signal.emit(text)
             self.process.stdout.close()
             self.process.wait()
             self.status_signal.emit(False)
-            self.log_signal.emit("--- Server stopped ---")
+            self.log_signal.emit("--- 服务器已停止 ---")
         except Exception as e:
-            self.log_signal.emit(f"Start failed: {e}")
+            self.log_signal.emit(f"启动失败: {e}")
             self.status_signal.emit(False)
 
     def stop_server(self):
@@ -87,14 +85,14 @@ class DownloadServerWorker(QObject):
             releases_sorted = sorted(releases, key=lambda v: v.get("releaseTime", ""), reverse=True)
             self.version_list_signal.emit(releases_sorted)
         except Exception as e:
-            self.finished_signal.emit(False, f"Failed to fetch versions: {e}")
+            self.finished_signal.emit(False, f"获取版本列表失败: {e}")
 
     def download_server(self, version_id, server_dir):
         try:
             def cb(pct, info):
                 if isinstance(info, int):
                     size_mb = info / 1048576
-                    self.progress_signal.emit(pct, f"Downloading ({pct}%) {size_mb:.1f} MB")
+                    self.progress_signal.emit(pct, f"下载中 ({pct}%) {size_mb:.1f} MB")
                 else:
                     self.progress_signal.emit(pct, info)
 
@@ -109,7 +107,7 @@ class DownloadServerWorker(QObject):
             else:
                 self.finished_signal.emit(False, msg)
         except Exception as e:
-            self.finished_signal.emit(False, f"Download failed: {e}")
+            self.finished_signal.emit(False, f"下载失败: {e}")
 
 
 class ServerPage(QWidget):
@@ -138,29 +136,29 @@ class ServerPage(QWidget):
         scroll_area.setWidget(content_widget)
 
         main_layout = QVBoxLayout(content_widget)
+        self._main_layout = main_layout
         main_layout.setContentsMargins(32, 24, 32, 24)
         main_layout.setSpacing(20)
 
         header = QHBoxLayout()
-        title = SectionTitle(tr("srv_title"))
+        title = SectionTitle("服务器管理")
         header.addWidget(title)
         header.addStretch()
-        self.status_badge = StatusBadge(tr("srv_stopped"), "warning")
+        self.status_badge = StatusBadge("已停止", "warning")
         header.addWidget(self.status_badge)
         main_layout.addLayout(header)
 
-        sub = SubTitle(tr("srv_subtitle"))
+        sub = SubTitle("管理本地 Minecraft 服务器")
         main_layout.addWidget(sub)
 
         card1 = Card()
         card1_layout = QVBoxLayout(card1)
         card1_layout.setSpacing(14)
 
+        card1_title = QLabel("服务器配置")
         card1_font = QFont()
         card1_font.setPointSize(13)
         card1_font.setBold(True)
-
-        card1_title = QLabel(tr("srv_config"))
         card1_title.setFont(card1_font)
         card1_layout.addWidget(card1_title)
 
@@ -172,9 +170,10 @@ class ServerPage(QWidget):
 
         server_dir_row = QHBoxLayout()
         self.server_dir_edit = QLineEdit(self.server_dir)
+        self.server_dir_edit.setPlaceholderText("服务器目录")
         self.server_dir_edit.setMinimumHeight(36)
         self.server_dir_edit.setFont(label_font)
-        server_dir_btn = QPushButton(tr("home_browse"))
+        server_dir_btn = QPushButton("浏览")
         server_dir_btn.setObjectName("btnSecondary")
         server_dir_btn.setMinimumHeight(36)
         server_dir_btn.setMinimumWidth(80)
@@ -182,13 +181,14 @@ class ServerPage(QWidget):
         server_dir_btn.clicked.connect(self._select_server_dir)
         server_dir_row.addWidget(self.server_dir_edit)
         server_dir_row.addWidget(server_dir_btn)
-        form.addRow(tr("srv_dir"), server_dir_row)
+        form.addRow("服务器目录", server_dir_row)
 
         java_row = QHBoxLayout()
         self.java_edit = QLineEdit(self.java_path)
+        self.java_edit.setPlaceholderText("Java 可执行文件")
         self.java_edit.setMinimumHeight(36)
         self.java_edit.setFont(label_font)
-        java_btn = QPushButton(tr("home_select"))
+        java_btn = QPushButton("选择")
         java_btn.setObjectName("btnSecondary")
         java_btn.setMinimumHeight(36)
         java_btn.setMinimumWidth(80)
@@ -196,25 +196,7 @@ class ServerPage(QWidget):
         java_btn.clicked.connect(self._select_java)
         java_row.addWidget(self.java_edit)
         java_row.addWidget(java_btn)
-
-        jar_row = QHBoxLayout()
-        self.jar_edit = QLineEdit(self.server_jar)
-        self.jar_edit.setPlaceholderText(tr("srv_select_jar"))
-        self.jar_edit.setMinimumHeight(36)
-        self.jar_edit.setFont(label_font)
-        jar_btn = QPushButton(tr("srv_select_jar"))
-        jar_btn.setObjectName("btnSecondary")
-        jar_btn.setMinimumHeight(36)
-        jar_btn.setMinimumWidth(80)
-        jar_btn.setFont(label_font)
-        jar_btn.clicked.connect(self._select_jar)
-        jar_row.addWidget(self.jar_edit)
-        jar_row.addWidget(jar_btn)
-
-        java_jar_layout = QVBoxLayout()
-        java_jar_layout.addLayout(java_row)
-        java_jar_layout.addLayout(jar_row)
-        form.addRow(tr("srv_java"), java_jar_layout)
+        form.addRow("Java 路径", java_row)
 
         card1_layout.addLayout(form)
         main_layout.addWidget(card1)
@@ -223,19 +205,19 @@ class ServerPage(QWidget):
         card_dl_layout = QVBoxLayout(card_dl)
         card_dl_layout.setSpacing(14)
 
-        dl_title = QLabel(tr("srv_download_core"))
+        dl_title = QLabel("下载服务端核心")
         dl_title.setFont(card1_font)
         card_dl_layout.addWidget(dl_title)
 
         dl_row = QHBoxLayout()
-        dl_row.addWidget(QLabel(tr("srv_select_version")))
+        dl_row.addWidget(QLabel("选择版本:"))
         self.version_combo = QComboBox()
         self.version_combo.setMinimumHeight(36)
         self.version_combo.setFont(label_font)
         self.version_combo.setMinimumWidth(200)
         dl_row.addWidget(self.version_combo)
 
-        self.fetch_ver_btn = QPushButton(tr("srv_fetch_ver"))
+        self.fetch_ver_btn = QPushButton("获取版本")
         self.fetch_ver_btn.setObjectName("btnSecondary")
         self.fetch_ver_btn.setMinimumHeight(36)
         self.fetch_ver_btn.setFont(label_font)
@@ -244,7 +226,7 @@ class ServerPage(QWidget):
 
         dl_row.addStretch()
 
-        self.download_btn = QPushButton(tr("srv_download"))
+        self.download_btn = QPushButton("下载服务端核心")
         self.download_btn.setMinimumHeight(40)
         self.download_btn.setMinimumWidth(160)
         dl_font = QFont()
@@ -272,13 +254,13 @@ class ServerPage(QWidget):
         card2_layout = QVBoxLayout(card2)
         card2_layout.setSpacing(14)
 
-        card2_title = QLabel(tr("srv_memory"))
+        card2_title = QLabel("内存 & 参数")
         card2_title.setFont(card1_font)
         card2_layout.addWidget(card2_title)
 
         mem_row = QHBoxLayout()
-        mem_label = QLabel(tr("srv_min_mem"))
-        mem_label.setFixedWidth(80)
+        mem_label = QLabel("最小内存")
+        mem_label.setFixedWidth(70)
         mem_label.setFont(label_font)
         mem_row.addWidget(mem_label)
         self.min_mem_slider = QSlider(Qt.Horizontal)
@@ -294,8 +276,8 @@ class ServerPage(QWidget):
         card2_layout.addLayout(mem_row)
 
         mem_row2 = QHBoxLayout()
-        mem_label2 = QLabel(tr("srv_max_mem"))
-        mem_label2.setFixedWidth(80)
+        mem_label2 = QLabel("最大内存")
+        mem_label2.setFixedWidth(70)
         mem_label2.setFont(label_font)
         mem_row2.addWidget(mem_label2)
         self.max_mem_slider = QSlider(Qt.Horizontal)
@@ -311,9 +293,9 @@ class ServerPage(QWidget):
         card2_layout.addLayout(mem_row2)
 
         extra_row = QHBoxLayout()
-        extra_row.addWidget(QLabel(tr("srv_extra_args")))
+        extra_row.addWidget(QLabel("额外参数:"))
         self.extra_args_edit = QLineEdit()
-        self.extra_args_edit.setPlaceholderText(tr("srv_extra_placeholder"))
+        self.extra_args_edit.setPlaceholderText("如: --port 25566")
         self.extra_args_edit.setMinimumHeight(36)
         self.extra_args_edit.setFont(label_font)
         extra_row.addWidget(self.extra_args_edit)
@@ -325,14 +307,14 @@ class ServerPage(QWidget):
         card3_layout = QVBoxLayout(card3)
         card3_layout.setSpacing(14)
 
-        card3_title = QLabel(tr("srv_console"))
+        card3_title = QLabel("控制台")
         card3_title.setFont(card1_font)
         card3_layout.addWidget(card3_title)
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(12)
 
-        self.start_btn = QPushButton(tr("srv_start"))
+        self.start_btn = QPushButton("启动服务器")
         start_font = QFont()
         start_font.setPointSize(12)
         start_font.setBold(True)
@@ -342,7 +324,7 @@ class ServerPage(QWidget):
         self.start_btn.clicked.connect(self._start_server)
         btn_row.addWidget(self.start_btn)
 
-        self.stop_btn = QPushButton(tr("srv_stop"))
+        self.stop_btn = QPushButton("停止服务器")
         self.stop_btn.setObjectName("btnDanger")
         self.stop_btn.setFont(start_font)
         self.stop_btn.setMinimumHeight(44)
@@ -351,7 +333,7 @@ class ServerPage(QWidget):
         self.stop_btn.clicked.connect(self._stop_server)
         btn_row.addWidget(self.stop_btn)
 
-        self.clear_btn = QPushButton(tr("srv_clear_log"))
+        self.clear_btn = QPushButton("清空日志")
         self.clear_btn.setObjectName("btnSecondary")
         self.clear_btn.setMinimumHeight(44)
         self.clear_btn.setMinimumWidth(120)
@@ -366,7 +348,7 @@ class ServerPage(QWidget):
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setMinimumHeight(280)
-        self.log_text.setMaximumHeight(600)
+        self.log_text.setMaximumHeight(800)
         log_font = QFont("Consolas", 10)
         self.log_text.setFont(log_font)
         card3_layout.addWidget(self.log_text)
@@ -374,12 +356,12 @@ class ServerPage(QWidget):
         cmd_row = QHBoxLayout()
         cmd_row.setSpacing(10)
         self.cmd_edit = QLineEdit()
-        self.cmd_edit.setPlaceholderText(tr("srv_cmd_placeholder"))
+        self.cmd_edit.setPlaceholderText("输入服务器命令...")
         self.cmd_edit.setMinimumHeight(38)
         self.cmd_edit.setFont(label_font)
         self.cmd_edit.returnPressed.connect(self._send_command)
         cmd_row.addWidget(self.cmd_edit)
-        self.cmd_btn = QPushButton(tr("srv_send"))
+        self.cmd_btn = QPushButton("发送")
         self.cmd_btn.setMinimumHeight(38)
         self.cmd_btn.setMinimumWidth(90)
         self.cmd_btn.setFont(label_font)
@@ -394,6 +376,19 @@ class ServerPage(QWidget):
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.addWidget(scroll_area)
+
+        self.resizeEvent = self._on_resize
+
+    def _on_resize(self, event):
+        height = event.size().height()
+        header_height = 120
+        card1_height = 140
+        card_dl_height = 120
+        card2_height = 160
+        cmd_height = 60
+        available = height - header_height - card1_height - card_dl_height - card2_height - cmd_height - 100
+        self.log_text.setMaximumHeight(max(280, available))
+        event.accept()
 
     def _fetch_versions(self):
         thread = threading.Thread(target=self.dl_worker.fetch_versions, daemon=True)
@@ -419,7 +414,7 @@ class ServerPage(QWidget):
         self.dl_progress.setVisible(True)
         self.dl_progress.setValue(0)
         self.dl_label.setVisible(True)
-        self.dl_label.setText("Connecting to Mojang...")
+        self.dl_label.setText("正在连接 Mojang...")
 
         thread = threading.Thread(
             target=self.dl_worker.download_server,
@@ -436,53 +431,42 @@ class ServerPage(QWidget):
         self.download_btn.setEnabled(True)
         if success:
             self.dl_progress.setValue(100)
-            self.dl_label.setText("Download complete!")
+            self.dl_label.setText("下载完成!")
             self.server_jar = result
-            self.jar_edit.setText(result)
-            self._append_log(f"Server core downloaded: {os.path.basename(result)}")
+            self._append_log(f"服务端核心已下载: {os.path.basename(result)}")
         else:
             self.dl_progress.setVisible(False)
             self.dl_label.setText(result)
-            QMessageBox.critical(self, tr("msg_download_failed"), result)
+            QMessageBox.critical(self, "下载失败", result)
 
     def _select_server_dir(self):
-        selected = QFileDialog.getExistingDirectory(self, tr("srv_dir"), self.server_dir)
+        selected = QFileDialog.getExistingDirectory(self, "选择服务器目录", self.server_dir)
         if selected:
             self.server_dir = selected
             self.server_dir_edit.setText(selected)
 
     def _select_java(self):
         selected, _ = QFileDialog.getOpenFileName(
-            self, tr("srv_java"), self.java_path,
-            "Executable (*.exe *.bat *.cmd)"
+            self, "选择 Java", self.java_path,
+            "可执行文件 (*.exe *.bat *.cmd)"
         )
         if selected:
             self.java_path = selected
             self.java_edit.setText(selected)
 
-    def _select_jar(self):
-        selected, _ = QFileDialog.getOpenFileName(
-            self, tr("srv_select_jar"), self.server_dir,
-            "Jar Files (*.jar)"
-        )
-        if selected:
-            self.server_jar = selected
-            self.jar_edit.setText(selected)
-
     def _start_server(self):
         if self.running:
             return
-        jar = self.jar_edit.text().strip() or self.server_jar
-        if not jar or not os.path.exists(jar):
-            QMessageBox.warning(self, tr("tip"), tr("srv_no_jar"))
+        if not self.server_jar or not os.path.exists(self.server_jar):
+            QMessageBox.warning(self, "提示", "请先下载或选择服务端核心")
             return
         java_path = self.java_edit.text().strip()
         if not java_path:
-            QMessageBox.warning(self, tr("tip"), tr("srv_no_java"))
+            QMessageBox.warning(self, "提示", "请设置 Java 路径")
             return
         server_dir = self.server_dir_edit.text().strip()
         if not os.path.isdir(server_dir):
-            QMessageBox.warning(self, tr("tip"), tr("srv_invalid_dir"))
+            QMessageBox.warning(self, "提示", "请选择有效的服务器目录")
             return
 
         mem_min = self.min_mem_slider.value()
@@ -490,20 +474,20 @@ class ServerPage(QWidget):
         extra = self.extra_args_edit.text().strip()
 
         self.log_text.clear()
-        self._append_log("Starting server...")
+        self._append_log("正在启动服务器...")
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.cmd_btn.setEnabled(True)
 
         thread = threading.Thread(
             target=self.worker.start_server,
-            args=(java_path, jar, server_dir, mem_min, mem_max, extra),
+            args=(java_path, self.server_jar, server_dir, mem_min, mem_max, extra),
             daemon=True
         )
         thread.start()
 
     def _stop_server(self):
-        self._append_log("Sending stop command...")
+        self._append_log("正在发送停止命令...")
         self.worker.stop_server()
 
     def _send_command(self):
@@ -522,6 +506,7 @@ class ServerPage(QWidget):
         self.log_text.clear()
 
     def _find_java(self):
+        import os
         candidates = [
             r"C:\Program Files\Microsoft\jdk-25.0.2.10-hotspot\bin\java.exe",
             r"C:\Program Files\Zulu\zulu-17\bin\java.exe",
@@ -539,9 +524,9 @@ class ServerPage(QWidget):
     def _on_status(self, running):
         self.running = running
         if running:
-            self.status_badge.set_status("normal", tr("srv_running"))
+            self.status_badge.set_status("normal", "运行中")
         else:
-            self.status_badge.set_status("warning", tr("srv_stopped"))
+            self.status_badge.set_status("warning", "已停止")
             self.start_btn.setEnabled(True)
             self.stop_btn.setEnabled(False)
             self.cmd_btn.setEnabled(False)

@@ -4,7 +4,7 @@ LANG = "zh"
 
 TRANSLATIONS = {
     "app_title": {"zh": "MCOpen - Minecraft 启动器", "en": "MCOpen - Minecraft Launcher"},
-    "version": {"zh": "v1.4.0", "en": "v1.4.0"},
+    "version": {"zh": "v1.1.2", "en": "v1.1.2"},
     "footer": {"zh": "MCOpen 启动内核\nMIT License", "en": "MCOpen Launcher Core\nMIT License"},
 
     "nav_home": {"zh": "启动游戏", "en": "Launch"},

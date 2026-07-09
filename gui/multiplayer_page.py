@@ -1,5 +1,3 @@
-"""联机大厅页面 - EasyTier P2P 虚拟局域网联机 (已检修)"""
-
 import os
 import sys
 import subprocess
@@ -7,19 +5,21 @@ import threading
 import re
 import time
 import socket
+import json
 from pathlib import Path
 
 from PyQt5.QtCore import Qt, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QTextEdit, QCheckBox,
-    QMessageBox, QScrollArea,
+    QPushButton, QTextEdit, QCheckBox, QComboBox,
+    QMessageBox, QScrollArea, QProgressBar,
 )
 from PyQt5.QtGui import QFont
 
 from core.cli import get_project_root
 from gui.widgets import Card, SectionTitle, SubTitle, StatusBadge
 from gui.i18n import tr
+from core.e4mc_manager import E4MCManager
 
 
 class EasyTierWorker(QObject):
@@ -66,7 +66,6 @@ class EasyTierWorker(QObject):
         return True
 
     def _is_port_open(self, port, timeout=1):
-        """检查本地端口是否已被占用"""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.settimeout(timeout)
@@ -76,7 +75,6 @@ class EasyTierWorker(QObject):
             return False
 
     def _find_available_rpc_port(self):
-        """寻找一个可用的RPC端口，避免冲突"""
         for offset in range(0, 50):
             port = self._rpc_port + offset
             if not self._is_port_open(port):
@@ -203,7 +201,6 @@ class EasyTierWorker(QObject):
             self.peers_updated.emit(peers)
 
     def _parse_own_ip_from_log(self, text):
-        """从EasyTier stdout日志解析自己的虚拟IP"""
         if self.virtual_ip:
             return
         patterns = [
@@ -261,17 +258,14 @@ class EasyTierWorker(QObject):
             self.status_signal.emit(False, tr("mp_disconnected"))
 
     def _wait_for_ip(self):
-        """循环重试获取虚拟IP，最多等待30秒"""
         max_wait = 30
         interval = 1.5
         elapsed = 0
         while elapsed < max_wait and not self._stop_flag:
             time.sleep(interval)
             elapsed += interval
-            # 如果 _read_output 已通过日志解析到IP，直接退出
             if self.virtual_ip:
                 return
-            # 后备：尝试通过CLI获取（其他peers的IP）
             ips = self._get_virtual_ips()
             if ips:
                 self.virtual_ip = ips[0]
@@ -347,7 +341,6 @@ class EasyTierWorker(QObject):
 
     @staticmethod
     def _is_private_ip(ip):
-        """检查是否为私有IP地址 (RFC1918)"""
         if ip.startswith("10."):
             return True
         if ip.startswith("192.168."):
@@ -405,14 +398,24 @@ class EasyTierWorker(QObject):
 class MultiplayerPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.game_root = os.path.join(get_project_root(), ".minecraft")
+        self.e4mc = E4MCManager(self.game_root)
+        self.e4mc.progress.connect(self._on_e4mc_progress)
+        self.e4mc.finished.connect(self._on_e4mc_finished)
+
         self.worker = EasyTierWorker()
         self.worker.log_signal.connect(self._append_log)
-        self.worker.status_signal.connect(self._on_status)
-        self.worker.ip_signal.connect(self._on_ip)
+        self.worker.status_signal.connect(self._on_easytier_status)
+        self.worker.ip_signal.connect(self._on_easytier_ip)
         self.worker.peers_updated.connect(self._on_peers_updated)
         self.worker.error_signal.connect(self._on_error)
+
         self._current_port = "25565"
+        self._current_e4mc_version = None
+        self._current_loader_type = None
+
         self._build_ui()
+        self._load_installed_versions()
 
     def _create_labeled_row(self, label_text, widget, label_width=100):
         row = QHBoxLayout()
@@ -439,149 +442,226 @@ class MultiplayerPage(QWidget):
         main_layout.setSpacing(20)
 
         header = QHBoxLayout()
-        title = SectionTitle(tr("mp_title"))
+        title = SectionTitle("联机大厅")
         header.addWidget(title)
         header.addStretch()
-        self.status_badge = StatusBadge(tr("mp_not_running"), "warning")
+        self.status_badge = StatusBadge("未开启", "warning")
         header.addWidget(self.status_badge)
         main_layout.addLayout(header)
 
-        sub = SubTitle(tr("mp_subtitle"))
+        sub = SubTitle("选择联机方式，一键开启多人游戏")
         main_layout.addWidget(sub)
 
-        card = Card()
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(14)
+        # ----- e4mc 联机卡片 -----
+        e4mc_card = Card()
+        e4mc_layout = QVBoxLayout(e4mc_card)
+        e4mc_layout.setSpacing(12)
 
-        card_title_font = QFont()
-        card_title_font.setPointSize(13)
-        card_title_font.setBold(True)
+        e4mc_title = QLabel("e4mc 模组联机")
+        e4mc_title.setFont(QFont("", 13, QFont.Bold))
+        e4mc_layout.addWidget(e4mc_title)
 
-        et_title = QLabel("EasyTier " + tr("mp_title"))
-        et_title.setFont(card_title_font)
-        card_layout.addWidget(et_title)
+        e4mc_desc = QLabel(
+            "基于 e4mc 模组，房主自动生成公网地址，朋友直接连接。\n"
+            "支持 Forge/Fabric/NeoForge/Quilt，无需公网IP。"
+        )
+        e4mc_desc.setWordWrap(True)
+        e4mc_desc.setStyleSheet("color: palette(mid); font-size: 11px; padding: 4px 0;")
+        e4mc_layout.addWidget(e4mc_desc)
 
-        et_desc = QLabel(tr("mp_desc"))
-        et_desc.setWordWrap(True)
-        et_desc.setStyleSheet("color: palette(mid); font-size: 11px; padding: 4px 0;")
-        card_layout.addWidget(et_desc)
+        self.e4mc_version_combo = QComboBox()
+        self.e4mc_version_combo.setMinimumHeight(34)
+        self.e4mc_version_combo.currentIndexChanged.connect(self._on_e4mc_version_selected)
+        e4mc_layout.addLayout(self._create_labeled_row("游戏版本", self.e4mc_version_combo))
+
+        self.e4mc_loader_combo = QComboBox()
+        self.e4mc_loader_combo.setMinimumHeight(34)
+        self.e4mc_loader_combo.addItem("Fabric", "fabric")
+        self.e4mc_loader_combo.addItem("Quilt", "quilt")
+        self.e4mc_loader_combo.addItem("Forge", "forge")
+        self.e4mc_loader_combo.addItem("NeoForge", "neoforge")
+        e4mc_layout.addLayout(self._create_labeled_row("模组加载器", self.e4mc_loader_combo))
+
+        self.e4mc_port_edit = QLineEdit()
+        self.e4mc_port_edit.setPlaceholderText("游戏端口 (默认25565)")
+        self.e4mc_port_edit.setMinimumHeight(34)
+        self.e4mc_port_edit.setText("25565")
+        e4mc_layout.addLayout(self._create_labeled_row("端口", self.e4mc_port_edit))
+
+        self.e4mc_version_info = QLabel("")
+        self.e4mc_version_info.setStyleSheet("color: palette(mid); font-size: 11px;")
+        self.e4mc_version_info.setWordWrap(True)
+        e4mc_layout.addWidget(self.e4mc_version_info)
+
+        e4mc_btn_row = QHBoxLayout()
+        self.e4mc_host_btn = QPushButton("开启联机")
+        self.e4mc_host_btn.setMinimumHeight(38)
+        self.e4mc_host_btn.setMinimumWidth(130)
+        self.e4mc_host_btn.clicked.connect(self._start_e4mc)
+
+        self.e4mc_stop_btn = QPushButton("关闭联机")
+        self.e4mc_stop_btn.setObjectName("btnDanger")
+        self.e4mc_stop_btn.setMinimumHeight(38)
+        self.e4mc_stop_btn.setMinimumWidth(130)
+        self.e4mc_stop_btn.setEnabled(False)
+        self.e4mc_stop_btn.clicked.connect(self._stop_e4mc)
+
+        self.e4mc_status_label = QLabel("未开启")
+        self.e4mc_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #5b7a9a; color: #ffffff; border-radius: 4px;")
+
+        self.e4mc_progress = QProgressBar()
+        self.e4mc_progress.setValue(0)
+        self.e4mc_progress.setVisible(False)
+        self.e4mc_progress.setMinimumHeight(20)
+
+        e4mc_btn_row.addWidget(self.e4mc_host_btn)
+        e4mc_btn_row.addWidget(self.e4mc_stop_btn)
+        e4mc_btn_row.addWidget(self.e4mc_status_label)
+        e4mc_btn_row.addStretch()
+        e4mc_layout.addLayout(e4mc_btn_row)
+        e4mc_layout.addWidget(self.e4mc_progress)
+
+        self.e4mc_copy_btn = QPushButton("复制地址")
+        self.e4mc_copy_btn.setObjectName("btnSecondary")
+        self.e4mc_copy_btn.setMinimumHeight(30)
+        self.e4mc_copy_btn.setMinimumWidth(120)
+        self.e4mc_copy_btn.setVisible(False)
+        self.e4mc_copy_btn.clicked.connect(self._copy_address)
+
+        e4mc_copy_row = QHBoxLayout()
+        e4mc_copy_row.addWidget(self.e4mc_copy_btn)
+        e4mc_copy_row.addStretch()
+        e4mc_layout.addLayout(e4mc_copy_row)
+
+        main_layout.addWidget(e4mc_card)
+
+        # ----- EasyTier 联机卡片 -----
+        easytier_card = Card()
+        easytier_layout = QVBoxLayout(easytier_card)
+        easytier_layout.setSpacing(12)
+
+        easytier_title = QLabel("EasyTier P2P 联机")
+        easytier_title.setFont(QFont("", 13, QFont.Bold))
+        easytier_layout.addWidget(easytier_title)
+
+        easytier_desc = QLabel(
+            "基于 EasyTier P2P 技术，无需服务器中转，完全免费。\n"
+            "双方需使用相同房间名和密码。"
+        )
+        easytier_desc.setWordWrap(True)
+        easytier_desc.setStyleSheet("color: palette(mid); font-size: 11px; padding: 4px 0;")
+        easytier_layout.addWidget(easytier_desc)
 
         self.et_room_edit = QLineEdit()
-        self.et_room_edit.setPlaceholderText(tr("mp_room_placeholder"))
+        self.et_room_edit.setPlaceholderText("输入房间名 (如: MCOpenRoom)")
         self.et_room_edit.setMinimumHeight(34)
         self.et_room_edit.setText("MCOpenRoom")
-        card_layout.addLayout(self._create_labeled_row(tr("mp_room_name"), self.et_room_edit))
+        easytier_layout.addLayout(self._create_labeled_row("房间名", self.et_room_edit))
 
         self.et_password_edit = QLineEdit()
-        self.et_password_edit.setPlaceholderText(tr("mp_password_placeholder"))
+        self.et_password_edit.setPlaceholderText("设置联机密码")
         self.et_password_edit.setMinimumHeight(34)
         self.et_password_edit.setText("123456")
-        card_layout.addLayout(self._create_labeled_row(tr("mp_password"), self.et_password_edit))
+        easytier_layout.addLayout(self._create_labeled_row("密码", self.et_password_edit))
 
-        self.et_port_edit = QLineEdit()
-        self.et_port_edit.setPlaceholderText(tr("mp_port_placeholder"))
-        self.et_port_edit.setMinimumHeight(34)
-        self.et_port_edit.setText("25565")
-        card_layout.addLayout(self._create_labeled_row(tr("mp_port"), self.et_port_edit))
+        self.et_easytier_port_edit = QLineEdit()
+        self.et_easytier_port_edit.setPlaceholderText("游戏端口 (默认25565)")
+        self.et_easytier_port_edit.setMinimumHeight(34)
+        self.et_easytier_port_edit.setText("25565")
+        easytier_layout.addLayout(self._create_labeled_row("端口", self.et_easytier_port_edit))
 
         relay_row = QHBoxLayout()
         relay_row.setSpacing(10)
         relay_spacer = QLabel("")
         relay_spacer.setFixedWidth(100)
         relay_row.addWidget(relay_spacer)
-        self.et_relay_check = QCheckBox(tr("mp_relay"))
+        self.et_relay_check = QCheckBox("启用中继转发 (保底方案)")
         self.et_relay_check.setChecked(True)
         relay_row.addWidget(self.et_relay_check)
         relay_row.addStretch()
-        card_layout.addLayout(relay_row)
+        easytier_layout.addLayout(relay_row)
 
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(12)
-
-        self.et_host_btn = QPushButton(tr("mp_host"))
+        et_btn_row = QHBoxLayout()
+        self.et_host_btn = QPushButton("房主开房")
         self.et_host_btn.setMinimumHeight(38)
         self.et_host_btn.setMinimumWidth(130)
-        self.et_host_btn.clicked.connect(self._start_host)
-        btn_row.addWidget(self.et_host_btn)
+        self.et_host_btn.clicked.connect(self._start_easytier_host)
 
-        self.et_join_btn = QPushButton(tr("mp_join"))
+        self.et_join_btn = QPushButton("加入房间")
         self.et_join_btn.setObjectName("btnSecondary")
         self.et_join_btn.setMinimumHeight(38)
         self.et_join_btn.setMinimumWidth(130)
-        self.et_join_btn.clicked.connect(self._start_join)
-        btn_row.addWidget(self.et_join_btn)
+        self.et_join_btn.clicked.connect(self._start_easytier_join)
 
-        self.et_stop_btn = QPushButton(tr("mp_stop"))
+        self.et_stop_btn = QPushButton("关闭联机")
         self.et_stop_btn.setObjectName("btnDanger")
         self.et_stop_btn.setMinimumHeight(38)
         self.et_stop_btn.setMinimumWidth(130)
         self.et_stop_btn.setEnabled(False)
-        self.et_stop_btn.clicked.connect(self._stop)
-        btn_row.addWidget(self.et_stop_btn)
+        self.et_stop_btn.clicked.connect(self._stop_easytier)
 
-        self.et_status_label = QLabel(tr("mp_not_running"))
-        self.et_status_label.setStyleSheet(
-            "font-size: 12px; padding: 6px 12px; background: #fd7e14; color: #ffffff; border-radius: 4px;"
-        )
-        btn_row.addWidget(self.et_status_label)
-        btn_row.addStretch()
-        card_layout.addLayout(btn_row)
+        self.et_status_label = QLabel("未开启")
+        self.et_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #5b7a9a; color: #ffffff; border-radius: 4px;")
 
-        self.et_ip_label = QLabel(f"{tr('mp_virtual_ip')} {tr('mp_not_obtained')}")
-        self.et_ip_label.setStyleSheet("font-size: 13px; color: #2d7d2d; font-weight: bold;")
-        card_layout.addWidget(self.et_ip_label)
+        et_btn_row.addWidget(self.et_host_btn)
+        et_btn_row.addWidget(self.et_join_btn)
+        et_btn_row.addWidget(self.et_stop_btn)
+        et_btn_row.addWidget(self.et_status_label)
+        et_btn_row.addStretch()
+        easytier_layout.addLayout(et_btn_row)
 
-        self.et_help_label = QLabel(tr("mp_join_help"))
-        self.et_help_label.setStyleSheet("font-size: 11px; color: palette(mid);")
-        card_layout.addWidget(self.et_help_label)
-
-        ip_btn_row = QHBoxLayout()
-        self.et_try_btn = QPushButton(tr("mp_try_ip"))
-        self.et_try_btn.setObjectName("btnSecondary")
-        self.et_try_btn.setMinimumHeight(30)
-        self.et_try_btn.setMinimumWidth(120)
-        self.et_try_btn.setVisible(False)
-        self.et_try_btn.clicked.connect(self._try_next_ip)
-        ip_btn_row.addWidget(self.et_try_btn)
-
-        self.et_copy_btn = QPushButton(tr("mp_copy_addr"))
+        self.et_copy_btn = QPushButton("复制地址")
         self.et_copy_btn.setObjectName("btnSecondary")
         self.et_copy_btn.setMinimumHeight(30)
         self.et_copy_btn.setMinimumWidth(120)
         self.et_copy_btn.setVisible(False)
         self.et_copy_btn.clicked.connect(self._copy_address)
-        ip_btn_row.addWidget(self.et_copy_btn)
-        ip_btn_row.addStretch()
-        card_layout.addLayout(ip_btn_row)
 
-        self.et_peer_label = QLabel(f"{tr('mp_peers')}")
+        et_copy_row = QHBoxLayout()
+        et_copy_row.addWidget(self.et_copy_btn)
+        et_copy_row.addStretch()
+        easytier_layout.addLayout(et_copy_row)
+
+        self.et_peer_label = QLabel("在线成员:")
         self.et_peer_label.setStyleSheet("font-weight: bold; font-size: 12px; margin-top: 8px;")
-        card_layout.addWidget(self.et_peer_label)
+        self.et_peer_label.setVisible(False)
+        easytier_layout.addWidget(self.et_peer_label)
 
-        self.et_peer_list = QLabel(tr("mp_no_peers"))
+        self.et_peer_list = QLabel("暂无其他成员")
         self.et_peer_list.setWordWrap(True)
         self.et_peer_list.setStyleSheet("font-size: 11px; color: palette(mid); padding: 8px; background: palette(dark); border-radius: 6px;")
-        card_layout.addWidget(self.et_peer_list)
+        self.et_peer_list.setVisible(False)
+        easytier_layout.addWidget(self.et_peer_list)
 
-        main_layout.addWidget(card)
+        main_layout.addWidget(easytier_card)
 
+        # ----- 共享的联机地址显示（全局） -----
+        self.et_ip_label = QLabel("联机地址: 未获取")
+        self.et_ip_label.setStyleSheet("font-size: 13px; color: #2d7d2d; font-weight: bold;")
+        main_layout.addWidget(self.et_ip_label)
+
+        self.et_help_label = QLabel("")
+        self.et_help_label.setStyleSheet("font-size: 11px; color: palette(mid);")
+        main_layout.addWidget(self.et_help_label)
+
+        # ----- 日志卡片 -----
         log_card = Card()
         log_layout = QVBoxLayout(log_card)
         log_layout.setSpacing(10)
-        log_title = QLabel("Log")
-        log_title.setFont(card_title_font)
+        log_title = QLabel("日志")
+        log_title.setFont(QFont("", 13, QFont.Bold))
         log_layout.addWidget(log_title)
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
-        self.log_text.setMinimumHeight(180)
-        self.log_text.setMaximumHeight(300)
+        self.log_text.setMinimumHeight(120)
+        self.log_text.setMaximumHeight(200)
         log_font = QFont("Consolas", 10)
         self.log_text.setFont(log_font)
         log_layout.addWidget(self.log_text)
 
         log_btn_row = QHBoxLayout()
-        self.clear_log_btn = QPushButton(tr("srv_clear_log"))
+        self.clear_log_btn = QPushButton("清空日志")
         self.clear_log_btn.setObjectName("btnSecondary")
         self.clear_log_btn.setMinimumHeight(32)
         self.clear_log_btn.clicked.connect(lambda: self.log_text.clear())
@@ -596,20 +676,206 @@ class MultiplayerPage(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(scroll_area)
 
-    def _reset_ui(self):
-        self.et_host_btn.setEnabled(True)
-        self.et_join_btn.setEnabled(True)
-        self.et_stop_btn.setEnabled(False)
-        self.et_try_btn.setVisible(False)
-        self.et_copy_btn.setVisible(False)
+        self._update_help_text()
 
-    def _start_host(self):
+    def _load_installed_versions(self):
+        self.e4mc_version_combo.clear()
+        self._version_info_map = {}
+
+        versions_dir = Path(self.game_root) / "versions"
+        if not versions_dir.exists():
+            self.e4mc_version_combo.addItem("未找到任何版本", None)
+            return
+
+        for dir_item in versions_dir.iterdir():
+            if not dir_item.is_dir() or dir_item.name == "natives":
+                continue
+            json_files = list(dir_item.glob("*.json"))
+            if not json_files:
+                continue
+            json_path = json_files[0]
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                version_id = data.get("id", dir_item.name)
+                main_class = data.get("mainClass", "")
+                loader_type = self._detect_loader_type(main_class, dir_item.name)
+                loader_version = self._extract_loader_version(data, loader_type)
+                supports_e4mc = self._is_version_supported(version_id)
+                display_text = f"{version_id} ({loader_type})"
+                if not supports_e4mc:
+                    display_text += " [不支持e4mc]"
+                self.e4mc_version_combo.addItem(display_text, version_id)
+                self._version_info_map[version_id] = {
+                    "loader_type": loader_type,
+                    "loader_version": loader_version,
+                    "supports_e4mc": supports_e4mc,
+                    "version_id": version_id,
+                }
+            except Exception:
+                self.e4mc_version_combo.addItem(dir_item.name, dir_item.name)
+                self._version_info_map[dir_item.name] = {
+                    "loader_type": "未知",
+                    "loader_version": "",
+                    "supports_e4mc": False,
+                    "version_id": dir_item.name,
+                }
+
+        if self.e4mc_version_combo.count() == 0:
+            self.e4mc_version_combo.addItem("未找到任何版本", None)
+
+    def _detect_loader_type(self, main_class, folder_name):
+        if "BootstrapLauncher" in main_class:
+            if "neoforge" in folder_name.lower():
+                return "NeoForge"
+            return "Forge"
+        elif "KnotClient" in main_class:
+            if "quilt" in folder_name.lower():
+                return "Quilt"
+            return "Fabric"
+        else:
+            return "Vanilla"
+
+    def _extract_loader_version(self, data, loader_type):
+        if loader_type in ("Forge", "NeoForge"):
+            for lib in data.get("libraries", []):
+                if "name" in lib and "forge" in lib["name"].lower():
+                    parts = lib["name"].split(":")
+                    if len(parts) >= 3:
+                        return parts[2]
+            return "未知"
+        elif loader_type == "Fabric":
+            return data.get("loaderVersion", "未知")
+        elif loader_type == "Quilt":
+            return data.get("loaderVersion", "未知")
+        return ""
+
+    def _is_version_supported(self, version_id):
+        try:
+            parts = version_id.split(".")
+            if len(parts) >= 2:
+                major = int(parts[0])
+                minor = int(parts[1])
+                if major > 1 or (major == 1 and minor >= 18):
+                    return True
+            return False
+        except:
+            return False
+
+    def _on_e4mc_version_selected(self, index):
+        version_id = self.e4mc_version_combo.currentData()
+        if not version_id:
+            self.e4mc_version_info.setText("请选择有效版本")
+            return
+        info = self._version_info_map.get(version_id)
+        if not info:
+            self.e4mc_version_info.setText("无法获取版本信息")
+            return
+
+        loader_type = info["loader_type"].lower()
+        for i in range(self.e4mc_loader_combo.count()):
+            if self.e4mc_loader_combo.itemData(i) == loader_type:
+                self.e4mc_loader_combo.setCurrentIndex(i)
+                break
+
+        if info["supports_e4mc"]:
+            self.e4mc_version_info.setText(
+                f"e4mc 联机 | 加载器: {info['loader_type']} ({info['loader_version'] if info['loader_version'] else '未知'})"
+            )
+            self.e4mc_version_info.setStyleSheet("color: #4a8c5c; font-weight: bold;")
+            self.e4mc_host_btn.setEnabled(True)
+        else:
+            self.e4mc_version_info.setText(
+                f"Minecraft {version_id} 不支持 e4mc 联机（需要 1.18 及以上版本）"
+            )
+            self.e4mc_version_info.setStyleSheet("color: #a0525a; font-weight: bold;")
+            self.e4mc_host_btn.setEnabled(False)
+
+    def _update_help_text(self):
+        self.et_help_label.setText("e4mc：进入游戏后点击「对局域网开放」生成地址 | EasyTier：朋友加入后输入虚拟IP:端口")
+
+    def _start_e4mc(self):
+        version_id = self.e4mc_version_combo.currentData()
+        if not version_id:
+            QMessageBox.warning(self, "提示", "请选择一个游戏版本")
+            return
+        info = self._version_info_map.get(version_id)
+        if not info or not info["supports_e4mc"]:
+            QMessageBox.warning(self, "提示", "该版本不支持 e4mc 联机")
+            return
+
+        loader_type = self.e4mc_loader_combo.currentData()
+        if not loader_type:
+            loader_type = "fabric"
+        port = self.e4mc_port_edit.text().strip()
+        if not port:
+            port = "25565"
+        try:
+            int(port)
+        except ValueError:
+            QMessageBox.warning(self, "提示", "端口必须是数字")
+            return
+
+        self.e4mc_host_btn.setEnabled(False)
+        self.e4mc_status_label.setText("正在下载模组...")
+        self.e4mc_copy_btn.setVisible(False)
+        self.et_ip_label.setText("联机地址: 未获取")
+        self.e4mc_progress.setVisible(True)
+        self.e4mc_progress.setValue(0)
+        self._current_port = port
+        self._current_e4mc_version = version_id
+        self._current_loader_type = loader_type
+        self._append_log(f"[e4mc] 开始下载 e4mc-{version_id}.jar ({loader_type})")
+
+        self.e4mc.install_async(version_id, loader_type)
+
+    def _on_e4mc_progress(self, pct, msg):
+        self.e4mc_progress.setVisible(True)
+        self.e4mc_progress.setValue(pct)
+        self.e4mc_status_label.setText(msg)
+
+    def _on_e4mc_finished(self, success, msg):
+        self.e4mc_progress.setVisible(False)
+        self.e4mc_host_btn.setEnabled(True)
+        version_id = self._current_e4mc_version
+        if success:
+            self.e4mc_status_label.setText("就绪，启动游戏")
+            self.e4mc_stop_btn.setEnabled(True)
+            if version_id:
+                self.et_ip_label.setText(f"联机地址: e4mc-{version_id}.e4mc.com")
+            self.e4mc_copy_btn.setVisible(True)
+            self._append_log(f"[e4mc] {msg}")
+            self._append_log("[e4mc] 进入游戏后点击「对局域网开放」即可生成公网地址")
+            self.status_badge.set_status("normal", "已就绪")
+            self.e4mc_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #4a8c5c; color: #ffffff; border-radius: 4px;")
+        else:
+            self.e4mc_status_label.setText("下载失败")
+            self.e4mc_stop_btn.setEnabled(False)
+            self.e4mc_copy_btn.setVisible(False)
+            self.e4mc_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #a0525a; color: #ffffff; border-radius: 4px;")
+            QMessageBox.warning(self, "下载失败", msg)
+            self.status_badge.set_status("error", "下载失败")
+
+    def _stop_e4mc(self):
+        self.e4mc.cancel()
+        self.e4mc.cleanup()
+        self.e4mc_host_btn.setEnabled(True)
+        self.e4mc_stop_btn.setEnabled(False)
+        self.e4mc_status_label.setText("已关闭")
+        self.e4mc_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #5b7a9a; color: #ffffff; border-radius: 4px;")
+        self.et_ip_label.setText("联机地址: 未获取")
+        self.e4mc_progress.setVisible(False)
+        self.e4mc_copy_btn.setVisible(False)
+        self.status_badge.set_status("warning", "已关闭")
+        self._append_log("[e4mc] 联机关闭")
+
+    def _start_easytier_host(self):
         room = self.et_room_edit.text().strip()
         password = self.et_password_edit.text().strip()
-        port = self.et_port_edit.text().strip()
+        port = self.et_easytier_port_edit.text().strip()
         enable_relay = self.et_relay_check.isChecked()
         if not room:
-            QMessageBox.warning(self, tr("tip"), tr("mp_room_required"))
+            QMessageBox.warning(self, "提示", "请输入房间名")
             return
         if not password:
             password = "123456"
@@ -618,117 +884,136 @@ class MultiplayerPage(QWidget):
         try:
             int(port)
         except ValueError:
-            QMessageBox.warning(self, tr("tip"), tr("mp_port_invalid"))
+            QMessageBox.warning(self, "提示", "端口必须是数字")
             return
 
         self.et_host_btn.setEnabled(False)
         self.et_join_btn.setEnabled(False)
-        self.et_status_label.setText(tr("mp_starting"))
-        self.et_try_btn.setVisible(False)
+        self.et_status_label.setText("正在开房...")
         self.et_copy_btn.setVisible(False)
+        self.et_ip_label.setText("联机地址: 未获取")
         self._current_port = port
+        self.et_peer_label.setVisible(True)
+        self.et_peer_list.setVisible(True)
+        self._append_log(f"[EasyTier] 房主开房: {room} (端口: {port})")
+
         success = self.worker.start_host(room, password, "MCOpen_Host", self, enable_relay)
         if not success:
-            self._reset_ui()
-            self.et_status_label.setText("Failed")
+            self.et_host_btn.setEnabled(True)
+            self.et_join_btn.setEnabled(True)
+            self.et_status_label.setText("开房失败")
+            self.et_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #a0525a; color: #ffffff; border-radius: 4px;")
+            self.status_badge.set_status("error", "开房失败")
 
-    def _start_join(self):
+    def _start_easytier_join(self):
         room = self.et_room_edit.text().strip()
         password = self.et_password_edit.text().strip()
         enable_relay = self.et_relay_check.isChecked()
         if not room:
-            QMessageBox.warning(self, tr("tip"), tr("mp_room_required"))
+            QMessageBox.warning(self, "提示", "请输入房间名")
             return
         if not password:
             password = "123456"
 
         self.et_host_btn.setEnabled(False)
         self.et_join_btn.setEnabled(False)
-        self.et_status_label.setText(tr("mp_connecting"))
-        self.et_try_btn.setVisible(False)
+        self.et_status_label.setText("正在加入...")
         self.et_copy_btn.setVisible(False)
+        self.et_ip_label.setText("联机地址: 未获取")
+        self._append_log(f"[EasyTier] 加入房间: {room}")
 
         success = self.worker.start_join(room, password, "MCOpen_Join", self, enable_relay)
         if not success:
-            self._reset_ui()
-            self.et_status_label.setText("Failed")
+            self.et_host_btn.setEnabled(True)
+            self.et_join_btn.setEnabled(True)
+            self.et_status_label.setText("加入失败")
+            self.et_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #a0525a; color: #ffffff; border-radius: 4px;")
+            self.status_badge.set_status("error", "加入失败")
         else:
-            QMessageBox.information(self, tr("mp_join_tutorial_title"), tr("mp_join_tutorial"))
+            QMessageBox.information(self, "加入房间教程",
+                "已成功加入虚拟网络！\n\n"
+                "请在游戏内按以下步骤操作：\n"
+                "1. 向房主索要他的虚拟 IP 和端口\n"
+                "2. 启动 Minecraft 客户端，进入多人游戏\n"
+                "3. 点击「添加服务器」或「直接连接」\n"
+                "4. 输入房主的 IP:端口（例如 10.126.126.1:25565）\n"
+                "5. 点击「加入」即可联机！\n\n"
+                "提示：房主的虚拟 IP 可在他的启动器联机卡片上查看。"
+            )
 
-    def _stop(self):
+    def _stop_easytier(self):
         self.worker.stop_node()
+        self.et_host_btn.setEnabled(True)
+        self.et_join_btn.setEnabled(True)
+        self.et_stop_btn.setEnabled(False)
+        self.et_status_label.setText("已关闭")
+        self.et_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #5b7a9a; color: #ffffff; border-radius: 4px;")
+        self.et_ip_label.setText("联机地址: 未获取")
+        self.et_peer_label.setVisible(False)
+        self.et_peer_list.setVisible(False)
+        self.et_copy_btn.setVisible(False)
+        self.status_badge.set_status("warning", "已关闭")
+        self._append_log("[EasyTier] 联机关闭")
 
-    def _on_error(self, msg):
-        self._append_log(f"[ERROR] {msg}")
-
-    def _on_status(self, running, msg):
+    def _on_easytier_status(self, running, msg):
         if running:
             self.et_status_label.setText(msg)
             self.et_host_btn.setEnabled(False)
             self.et_join_btn.setEnabled(False)
             self.et_stop_btn.setEnabled(True)
-            if tr("mp_connected") in msg or "10." in msg or "172." in msg or "192.168." in msg:
-                self.et_try_btn.setVisible(True)
+            if "已连接" in msg or "虚拟IP" in msg:
                 self.et_copy_btn.setVisible(True)
-                self.et_status_label.setStyleSheet(
-                    "font-size: 12px; padding: 6px 12px; background: #28a745; color: #ffffff; border-radius: 4px;"
-                )
-                self.status_badge.set_status("normal", tr("mp_connected"))
+                self.et_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #4a8c5c; color: #ffffff; border-radius: 4px;")
+                self.status_badge.set_status("normal", "已连接")
             else:
-                self.et_try_btn.setVisible(False)
                 self.et_copy_btn.setVisible(False)
-                self.et_status_label.setStyleSheet(
-                    "font-size: 12px; padding: 6px 12px; background: #ffc107; color: #000000; border-radius: 4px;"
-                )
-                self.status_badge.set_status("info", tr("mp_connecting"))
+                self.et_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #c48a4a; color: #ffffff; border-radius: 4px;")
+                self.status_badge.set_status("info", "连接中")
         else:
-            self._reset_ui()
-            self.et_status_label.setText(msg)
-            self.et_status_label.setStyleSheet(
-                "font-size: 12px; padding: 6px 12px; background: #dc3545; color: #ffffff; border-radius: 4px;"
-            )
-            self.status_badge.set_status("warning", tr("mp_disconnected"))
+            if "断开" in msg or "停止" in msg:
+                self.et_host_btn.setEnabled(True)
+                self.et_join_btn.setEnabled(True)
+                self.et_stop_btn.setEnabled(False)
+                self.et_status_label.setText("已断开")
+                self.et_status_label.setStyleSheet("font-size: 12px; padding: 6px 12px; background: #a0525a; color: #ffffff; border-radius: 4px;")
+                self.status_badge.set_status("warning", "已断开")
+                self.et_peer_label.setVisible(False)
+                self.et_peer_list.setVisible(False)
 
-    def _on_ip(self, ip):
-        port = self.et_port_edit.text().strip() or "25565"
-        self.et_ip_label.setText(f"{tr('mp_virtual_ip')} {ip}")
-        self._append_log(f"[MP] Virtual IP: {ip}")
-        self._append_log(f"[MP] Friends join with {ip}:{port}")
+    def _on_easytier_ip(self, ip):
+        port = self.et_easytier_port_edit.text().strip() or "25565"
+        self.et_ip_label.setText(f"联机地址: {ip}:{port}")
+        self._append_log(f"[EasyTier] 虚拟IP: {ip}")
+        self._append_log(f"[EasyTier] 朋友在游戏内输入 {ip}:{port} 即可加入")
 
     def _on_peers_updated(self, peers):
         if not peers:
-            self.et_peer_list.setText(tr("mp_no_peers"))
+            self.et_peer_list.setText("暂无其他成员")
             return
-        port = self.et_port_edit.text().strip() or "25565"
+        port = self.et_easytier_port_edit.text().strip() or "25565"
         lines = []
         for peer in peers:
             ip = peer.get("ip", "")
-            hostname = peer.get("hostname", "Unknown")
+            hostname = peer.get("hostname", "未知")
             if ip:
                 lines.append(f"{hostname}  -  {ip}:{port}")
             else:
-                lines.append(f"{hostname}  -  ...")
+                lines.append(f"{hostname}  -  未获取到IP")
         self.et_peer_list.setText("\n".join(lines))
 
-    def _try_next_ip(self):
-        ip = self.worker.get_next_ip()
-        if ip:
-            port = self.et_port_edit.text().strip() or "25565"
-            self.et_ip_label.setText(f"{tr('mp_virtual_ip')} {ip} (alt)")
-        else:
-            self.worker.reset_ip_index()
-            ip = self.worker.get_next_ip()
-            if ip:
-                port = self.et_port_edit.text().strip() or "25565"
-                self.et_ip_label.setText(f"{tr('mp_virtual_ip')} {ip} (alt)")
+    def _on_error(self, msg):
+        self._append_log(f"[错误] {msg}")
+        self.status_badge.set_status("error", "错误")
 
     def _copy_address(self):
-        text = self.et_ip_label.text().replace(f"{tr('mp_virtual_ip')} ", "").replace(" (alt)", "").strip()
-        port = self.et_port_edit.text().strip() or "25565"
-        if text and text != tr("mp_not_obtained"):
+        text = self.et_ip_label.text().replace("联机地址: ", "").strip()
+        if text and text != "未获取":
             from PyQt5.QtWidgets import QApplication
-            QApplication.clipboard().setText(f"{text}:{port}")
-            self.et_status_label.setText(tr("mp_addr_copied"))
+            QApplication.clipboard().setText(text)
+            # 根据当前哪个联机方式在运行决定更新哪个状态标签（简单起见，两个都更新）
+            self.e4mc_status_label.setText("地址已复制")
+            self.et_status_label.setText("地址已复制")
+            self._append_log(f"[联机] 已复制地址: {text}")
 
     def _append_log(self, text):
         self.log_text.append(text)
