@@ -143,6 +143,7 @@ class EasyTierWorker(QObject):
             self._ip_candidates = []
             self._exit_code = None
             self._stop_flag = False
+            self.virtual_ip = ""
 
             cmd = [
                 str(self.core_path),
@@ -201,6 +202,30 @@ class EasyTierWorker(QObject):
             self._peers = peers
             self.peers_updated.emit(peers)
 
+    def _parse_own_ip_from_log(self, text):
+        """从EasyTier stdout日志解析自己的虚拟IP"""
+        if self.virtual_ip:
+            return
+        patterns = [
+            r'assign ipv4[:\s]+(\d+\.\d+\.\d+\.\d+)',
+            r'local virtual ip[:\s]+(\d+\.\d+\.\d+\.\d+)',
+            r'virtual ip[:\s]+(\d+\.\d+\.\d+\.\d+)',
+            r'ipv4[:\s]+(\d+\.\d+\.\d+\.\d+)',
+            r'(?i)ip[:\s]+(10\.\d+\.\d+\.\d+)',
+            r'(?i)ip[:\s]+(172\.1[6-9]\.\d+\.\d+|172\.2[0-9]\.\d+\.\d+|172\.3[01]\.\d+\.\d+)',
+            r'(?i)ip[:\s]+(192\.168\.\d+\.\d+)',
+        ]
+        for pat in patterns:
+            match = re.search(pat, text)
+            if match:
+                ip = match.group(1)
+                if self._is_private_ip(ip):
+                    self.virtual_ip = ip
+                    self._ip_candidates = [ip]
+                    self.ip_signal.emit(ip)
+                    self.status_signal.emit(True, f"{tr('mp_connected')} - {ip}")
+                    return
+
     def _read_output(self):
         if not self.process:
             return
@@ -215,6 +240,7 @@ class EasyTierWorker(QObject):
                     text = str(line)
                 if text:
                     self.log_signal.emit(f"[EasyTier] {text}")
+                    self._parse_own_ip_from_log(text)
         except Exception:
             pass
 
@@ -242,6 +268,10 @@ class EasyTierWorker(QObject):
         while elapsed < max_wait and not self._stop_flag:
             time.sleep(interval)
             elapsed += interval
+            # 如果 _read_output 已通过日志解析到IP，直接退出
+            if self.virtual_ip:
+                return
+            # 后备：尝试通过CLI获取（其他peers的IP）
             ips = self._get_virtual_ips()
             if ips:
                 self.virtual_ip = ips[0]
@@ -253,7 +283,7 @@ class EasyTierWorker(QObject):
                 self.status_signal.emit(True, tr("mp_connecting"))
                 self.log_signal.emit("[EasyTier] Still connecting...")
 
-        if not self._stop_flag:
+        if not self._stop_flag and not self.virtual_ip:
             if self._role == "host":
                 self.status_signal.emit(True, tr("mp_connecting"))
                 self.log_signal.emit("[EasyTier] Waiting for peers...")
