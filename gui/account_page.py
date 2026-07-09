@@ -1,9 +1,7 @@
-"""账号管理页面 - 离线登录 + 默认账号切换"""
-
 import json
 import os
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, pyqtSignal, QSize
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QListWidget, QListWidgetItem, QMessageBox,
@@ -19,7 +17,6 @@ ACCOUNTS_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "accoun
 
 
 def get_default_account():
-    """获取默认账号，如果没有则返回 None"""
     if os.path.exists(ACCOUNTS_FILE):
         with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -201,7 +198,8 @@ class AccountPage(QWidget):
             item = QListWidgetItem()
             item.setText(f"{acc['name']}  [{display}]{marker}")
             item.setData(Qt.UserRole, acc)
-            item.setSizeHint(item.sizeHint().grownBy(0, 6))
+            hint = item.sizeHint()
+            item.setSizeHint(QSize(hint.width(), hint.height() + 6))
             self.account_list.addItem(item)
         if self.accounts:
             self.status_badge.set_status("normal", f"{len(self.accounts)} {tr('acc_offline')}")

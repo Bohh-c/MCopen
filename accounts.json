@@ -1,0 +1,13 @@
+{
+  "accounts": [
+    {
+      "name": "篮子",
+      "uuid": "522f3a09a9a34d319eb03af17c5b62e8",
+      "accessToken": "fe2bdc1e-1ca0-4180-b139-7e29cff4f645",
+      "clientToken": "6e11a699-e090-4789-92ff-1979d8a8e07e",
+      "authType": "offline",
+      "userType": "offline"
+    }
+  ],
+  "default_idx": 0
+}

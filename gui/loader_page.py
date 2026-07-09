@@ -1,4 +1,4 @@
-"""模组加载器安装页面 - HMCL风格，支持Forge/Fabric/NeoForge/Quilt"""
+"""模组加载器安装页面"""
 
 import os
 import threading
@@ -86,10 +86,10 @@ class InstallWorker(QObject):
 
 
 LOADERS = [
-    {"id": "forge", "name": "Forge", "icon": "🔨", "desc_zh": "最流行的模组加载器，兼容性强", "desc_en": "Most popular mod loader, great compatibility"},
-    {"id": "fabric", "name": "Fabric", "icon": "🧵", "desc_zh": "轻量级，更新快，模组丰富", "desc_en": "Lightweight, fast updates, rich mod ecosystem"},
-    {"id": "neoforge", "name": "NeoForge", "icon": "⚒️", "desc_zh": "Forge的现代分支，性能优化", "desc_en": "Modern fork of Forge, performance optimized"},
-    {"id": "quilt", "name": "Quilt", "icon": "🧶", "desc_zh": "Fabric的社区分支，注重模块化", "desc_en": "Community fork of Fabric, focused on modularity"},
+    {"id": "forge", "name": "Forge", "icon": "", "desc_zh": "最流行的模组加载器，兼容性强", "desc_en": "Most popular mod loader, great compatibility"},
+    {"id": "fabric", "name": "Fabric", "icon": "", "desc_zh": "轻量级，更新快，模组丰富", "desc_en": "Lightweight, fast updates, rich mod ecosystem"},
+    {"id": "neoforge", "name": "NeoForge", "icon": "", "desc_zh": "Forge的现代分支，性能优化", "desc_en": "Modern fork of Forge, performance optimized"},
+    {"id": "quilt", "name": "Quilt", "icon": "", "desc_zh": "Fabric的社区分支，注重模块化", "desc_en": "Community fork of Fabric, focused on modularity"},
 ]
 
 

@@ -1,4 +1,4 @@
-"""模组下载页面 - HMCL风格，从Modrinth下载模组"""
+"""模组下载页面"""
 
 import os
 import threading

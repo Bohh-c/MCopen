@@ -1,77 +1,87 @@
 # MCOpen API 接口文档
+
 ## 架构说明
+
 整体四层分层架构：资源解析层 -> 账号认证层 -> 下载引擎层 -> Java启动内核
-顶层 UnifiedLaunchCore 统一分发调度；
-Java版为完整游戏启动内核；BedrockEngine仅作为**基岩第三方启动器辅助工具模块**，不内置游戏运行二进制，仅提供配置、文件管理、外部进程调用能力，两者代码完全隔离，新增BE辅助逻辑不修改上层任何代码。
 
-## 全局统一入口（GUI唯一调用）
-launch(edition, cfg, account, min_mem, max_mem)
-edition 枚举：java / bedrock
-- java：完整拉起Java游戏进程
-- bedrock：仅辅助基岩版启动 **不内置任何基岩版启动器**
+顶层 `UnifiedLaunchCore` 统一分发调度，支持 Java 版完整游戏启动。
 
 ---
-## 一、Java版完整API（已全部实现，核心主力）
-### VersionParser 版本解析模块
-parse_version(ver_id: str) -> dict
-读取versions版本json，自动过滤条件参数，分离普通jar与natives原生库，解压LWJGL动态链接库，输出完整运行配置。
-返回字段：mainClass, raw_args, libraries, natives, assets_id, jar_path
 
-### AssetChecker 资源完整性校验
-scan_missing(asset_id: str) -> list
-读取assets索引哈希，扫描本地缺失材质、音效、语言文件，返回缺失资源哈希列表，直接传入下载引擎。
+## 全局统一入口
 
-### AccountManager 认证模块
-create_offline(name: str) -> dict
-生成MC标准Yggdrasil离线账号，包含name、uuid、accessToken、clientToken，兼容1.17+全部新版本认证协议。
-microsoft_oauth()
-预留微软OAuth2正版登录接口，未实现。
+### `launch_game(game_root, java_path, cfg, account, min_mem, max_mem, ver_type)`
 
-### DownloadEngine 异步下载引擎
-batch_download(url_list, root_path)
-多线程后台批量下载，Qt信号槽返回进度百分比，不阻塞UI线程，自动递归创建目录。
-single_download(url, out_path)
-底层单文件流式下载。
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `game_root` | str | .minecraft 目录路径 |
+| `java_path` | str | Java 可执行文件路径 |
+| `cfg` | dict | 版本配置（由 `parse_version` 返回） |
+| `account` | dict | 账号信息（由 `create_offline_account` 返回） |
+| `min_mem` | int | 最小内存（MB），默认 1024 |
+| `max_mem` | int | 最大内存（MB），默认 4096 |
+| `ver_type` | str | 加载器类型：`vanilla` / `forge` / `neoforge` / `fabric` / `quilt`，默认 `vanilla` |
 
-### JavaLaunchEngine Java启动内核
-launch(cfg, account, min_mem, max_mem)
-拼接完整ClassPath、JVM参数、游戏强制环境变量，注入natives dll路径，拉起Java游戏进程。
+**返回**：`subprocess.Popen` 进程对象
 
 ---
-## 二、Bedrock基岩辅助工具API（接口定型，仅做外部调用辅助，无内置运行程序）
-### BedrockEngine 基岩工具模块（仅辅助，不含内置启动器）
-scan_install()
-扫描本地BE自定义目录，读取pak资源包、options配置、存档/附加包路径。
-xbox_authenticate()
-完整OAuth2 → XBL → XSTS 微软Xbox认证链路，仅用于正版账号信息读取（不强制启动）。
-set_xsts(token: str)
-外部注入XSTS身份令牌，GUI账号面板调用。
-generate_launch_args()
-【新增接口】根据用户填写的离线昵称、游戏目录，生成mcpelauncher离线启动命令行参数，返回参数列表供外部进程调用。
-launch()
-基岩工具入口：读取本地用户选择的mcpelauncher二进制路径，拼接参数拉起外部第三方程序；**本项目不自带任何基岩版启动相关内容，仅做辅助工具**。
 
-## 数据结构体标准（永久固定）
-### VersionConfig
-{
-    mainClass: str,
-    raw_args: list,
-    libraries: list,
-    natives: list,
-    assets_id: str,
-    jar_path: str
-}
-### PlayerAccount
-{
-    name: str,
-    uuid: str,
-    accessToken: str,
-    clientToken: str,
-    authType: str
-}
+## 一、版本解析模块
 
-## 开发规范
-1. GUI禁止直接import底层Engine，只能通过UnifiedLaunchCore调用
-2. 所有Java游戏底层逻辑修改只允许在JavaLaunchEngine类内部
-3. BE所有工具代码仅写入BedrockEngine，禁止侵入Java内核逻辑
-4. 顶层对外接口定稿永久不再修改
+### `parse_version(game_root, version_id, ver_folder_name, json_filename, ver_type, progress_callback)`
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `game_root` | str | .minecraft 目录路径 |
+| `version_id` | str | 版本 ID（如 `1.20.1`） |
+| `ver_folder_name` | str | 版本文件夹名（如 `1.20.1-Forge_47.1.106`） |
+| `json_filename` | str | 版本 JSON 文件名 |
+| `ver_type` | str | 加载器类型，默认 `vanilla` |
+| `progress_callback` | callable | 进度回调函数 `(pct, msg)` |
+
+**返回字段**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | str | 版本 ID |
+| `mainClass` | str | 主类名 |
+| `raw_args` | list | 游戏启动参数 |
+| `jvm_args` | list | JVM 参数 |
+| `libraries` | list | 库文件路径列表 |
+| `natives` | list | Native 库路径列表 |
+| `loader` | object | 加载器处理器实例 |
+| `assets_id` | str | 资源索引 ID |
+| `jar_path` | str | 版本 JAR 文件路径 |
+| `ver_type` | str | 加载器类型 |
+
+### 支持的加载器类型
+
+| 类型 | 说明 |
+|------|------|
+| `vanilla` | 原版 |
+| `forge` | Forge |
+| `neoforge` | NeoForge |
+| `fabric` | Fabric |
+| `quilt` | Quilt |
+
+---
+
+## 二、账号认证模块
+
+### `create_offline_account(name)`
+
+| 参数 | 类型 | 说明  |
+|------|------|------|
+|`name`| str  |玩家名|
+
+**返回字段**：
+
+```json
+{
+    "name": "Player",
+    "uuid": "70b24680c1b9498f8322c473484ef6a8",
+    "accessToken": "uuid",
+    "clientToken": "uuid",
+    "authType": "offline",
+    "userType": "offline"
+}
