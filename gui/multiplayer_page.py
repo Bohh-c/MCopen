@@ -410,7 +410,6 @@ class MultiplayerPage(QWidget):
         self.worker.peers_updated.connect(self._on_peers_updated)
         self.worker.error_signal.connect(self._on_error)
 
-        self._current_port = "25565"
         self._current_e4mc_version = None
         self._current_loader_type = None
 
@@ -452,7 +451,6 @@ class MultiplayerPage(QWidget):
         sub = SubTitle("选择联机方式，一键开启多人游戏")
         main_layout.addWidget(sub)
 
-        # ----- e4mc 联机卡片 -----
         e4mc_card = Card()
         e4mc_layout = QVBoxLayout(e4mc_card)
         e4mc_layout.setSpacing(12)
@@ -481,12 +479,6 @@ class MultiplayerPage(QWidget):
         self.e4mc_loader_combo.addItem("Forge", "forge")
         self.e4mc_loader_combo.addItem("NeoForge", "neoforge")
         e4mc_layout.addLayout(self._create_labeled_row("模组加载器", self.e4mc_loader_combo))
-
-        self.e4mc_port_edit = QLineEdit()
-        self.e4mc_port_edit.setPlaceholderText("游戏端口 (默认25565)")
-        self.e4mc_port_edit.setMinimumHeight(34)
-        self.e4mc_port_edit.setText("25565")
-        e4mc_layout.addLayout(self._create_labeled_row("端口", self.e4mc_port_edit))
 
         self.e4mc_version_info = QLabel("")
         self.e4mc_version_info.setStyleSheet("color: palette(mid); font-size: 11px;")
@@ -535,7 +527,6 @@ class MultiplayerPage(QWidget):
 
         main_layout.addWidget(e4mc_card)
 
-        # ----- EasyTier 联机卡片 -----
         easytier_card = Card()
         easytier_layout = QVBoxLayout(easytier_card)
         easytier_layout.setSpacing(12)
@@ -563,12 +554,6 @@ class MultiplayerPage(QWidget):
         self.et_password_edit.setMinimumHeight(34)
         self.et_password_edit.setText("123456")
         easytier_layout.addLayout(self._create_labeled_row("密码", self.et_password_edit))
-
-        self.et_easytier_port_edit = QLineEdit()
-        self.et_easytier_port_edit.setPlaceholderText("游戏端口 (默认25565)")
-        self.et_easytier_port_edit.setMinimumHeight(34)
-        self.et_easytier_port_edit.setText("25565")
-        easytier_layout.addLayout(self._create_labeled_row("端口", self.et_easytier_port_edit))
 
         relay_row = QHBoxLayout()
         relay_row.setSpacing(10)
@@ -635,7 +620,6 @@ class MultiplayerPage(QWidget):
 
         main_layout.addWidget(easytier_card)
 
-        # ----- 共享的联机地址显示（全局） -----
         self.et_ip_label = QLabel("联机地址: 未获取")
         self.et_ip_label.setStyleSheet("font-size: 13px; color: #2d7d2d; font-weight: bold;")
         main_layout.addWidget(self.et_ip_label)
@@ -644,7 +628,6 @@ class MultiplayerPage(QWidget):
         self.et_help_label.setStyleSheet("font-size: 11px; color: palette(mid);")
         main_layout.addWidget(self.et_help_label)
 
-        # ----- 日志卡片 -----
         log_card = Card()
         log_layout = QVBoxLayout(log_card)
         log_layout.setSpacing(10)
@@ -680,8 +663,6 @@ class MultiplayerPage(QWidget):
 
     def _load_installed_versions(self):
         self.e4mc_version_combo.clear()
-        self._version_info_map = {}
-
         versions_dir = Path(self.game_root) / "versions"
         if not versions_dir.exists():
             self.e4mc_version_combo.addItem("未找到任何版本", None)
@@ -690,72 +671,18 @@ class MultiplayerPage(QWidget):
         for dir_item in versions_dir.iterdir():
             if not dir_item.is_dir() or dir_item.name == "natives":
                 continue
-            json_files = list(dir_item.glob("*.json"))
-            if not json_files:
-                continue
-            json_path = json_files[0]
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                version_id = data.get("id", dir_item.name)
-                main_class = data.get("mainClass", "")
-                loader_type = self._detect_loader_type(main_class, dir_item.name)
-                loader_version = self._extract_loader_version(data, loader_type)
-                supports_e4mc = self._is_version_supported(version_id)
-                display_text = f"{version_id} ({loader_type})"
-                if not supports_e4mc:
-                    display_text += " [不支持e4mc]"
-                self.e4mc_version_combo.addItem(display_text, version_id)
-                self._version_info_map[version_id] = {
-                    "loader_type": loader_type,
-                    "loader_version": loader_version,
-                    "supports_e4mc": supports_e4mc,
-                    "version_id": version_id,
-                }
-            except Exception:
-                self.e4mc_version_combo.addItem(dir_item.name, dir_item.name)
-                self._version_info_map[dir_item.name] = {
-                    "loader_type": "未知",
-                    "loader_version": "",
-                    "supports_e4mc": False,
-                    "version_id": dir_item.name,
-                }
+            self.e4mc_version_combo.addItem(dir_item.name, dir_item.name)
 
         if self.e4mc_version_combo.count() == 0:
             self.e4mc_version_combo.addItem("未找到任何版本", None)
 
-    def _detect_loader_type(self, main_class, folder_name):
-        if "BootstrapLauncher" in main_class:
-            if "neoforge" in folder_name.lower():
-                return "NeoForge"
-            return "Forge"
-        elif "KnotClient" in main_class:
-            if "quilt" in folder_name.lower():
-                return "Quilt"
-            return "Fabric"
-        else:
-            return "Vanilla"
-
-    def _extract_loader_version(self, data, loader_type):
-        if loader_type in ("Forge", "NeoForge"):
-            for lib in data.get("libraries", []):
-                if "name" in lib and "forge" in lib["name"].lower():
-                    parts = lib["name"].split(":")
-                    if len(parts) >= 3:
-                        return parts[2]
-            return "未知"
-        elif loader_type == "Fabric":
-            return data.get("loaderVersion", "未知")
-        elif loader_type == "Quilt":
-            return data.get("loaderVersion", "未知")
-        return ""
-
     def _is_version_supported(self, version_id):
         try:
-            parts = version_id.split(".")
-            if len(parts) >= 2:
-                major = int(parts[0])
-                minor = int(parts[1])
+            import re
+            match = re.search(r'(\d+)\.(\d+)', version_id)
+            if match:
+                major = int(match.group(1))
+                minor = int(match.group(2))
                 if major > 1 or (major == 1 and minor >= 18):
                     return True
             return False
@@ -766,55 +693,36 @@ class MultiplayerPage(QWidget):
         version_id = self.e4mc_version_combo.currentData()
         if not version_id:
             self.e4mc_version_info.setText("请选择有效版本")
-            return
-        info = self._version_info_map.get(version_id)
-        if not info:
-            self.e4mc_version_info.setText("无法获取版本信息")
+            self.e4mc_host_btn.setEnabled(False)
             return
 
-        loader_type = info["loader_type"].lower()
-        for i in range(self.e4mc_loader_combo.count()):
-            if self.e4mc_loader_combo.itemData(i) == loader_type:
-                self.e4mc_loader_combo.setCurrentIndex(i)
-                break
-
-        if info["supports_e4mc"]:
-            self.e4mc_version_info.setText(
-                f"e4mc 联机 | 加载器: {info['loader_type']} ({info['loader_version'] if info['loader_version'] else '未知'})"
-            )
+        supports = self._is_version_supported(version_id)
+        if supports:
+            self.e4mc_version_info.setText(f"已选版本: {version_id}")
             self.e4mc_version_info.setStyleSheet("color: #4a8c5c; font-weight: bold;")
             self.e4mc_host_btn.setEnabled(True)
         else:
             self.e4mc_version_info.setText(
-                f"Minecraft {version_id} 不支持 e4mc 联机（需要 1.18 及以上版本）"
+                f"Minecraft {version_id} 可能不支持 e4mc 联机（需要 1.18 及以上版本）"
             )
             self.e4mc_version_info.setStyleSheet("color: #a0525a; font-weight: bold;")
             self.e4mc_host_btn.setEnabled(False)
 
     def _update_help_text(self):
-        self.et_help_label.setText("e4mc：进入游戏后点击「对局域网开放」生成地址 | EasyTier：朋友加入后输入虚拟IP:端口")
+        self.et_help_label.setText("e4mc：进入游戏后点击「对局域网开放」生成地址 | EasyTier：朋友加入后输入虚拟IP")
 
     def _start_e4mc(self):
         version_id = self.e4mc_version_combo.currentData()
         if not version_id:
             QMessageBox.warning(self, "提示", "请选择一个游戏版本")
             return
-        info = self._version_info_map.get(version_id)
-        if not info or not info["supports_e4mc"]:
-            QMessageBox.warning(self, "提示", "该版本不支持 e4mc 联机")
+        if not self._is_version_supported(version_id):
+            QMessageBox.warning(self, "提示", "该版本可能不支持 e4mc 联机（需要 1.18 及以上版本）")
             return
 
         loader_type = self.e4mc_loader_combo.currentData()
         if not loader_type:
             loader_type = "fabric"
-        port = self.e4mc_port_edit.text().strip()
-        if not port:
-            port = "25565"
-        try:
-            int(port)
-        except ValueError:
-            QMessageBox.warning(self, "提示", "端口必须是数字")
-            return
 
         self.e4mc_host_btn.setEnabled(False)
         self.e4mc_status_label.setText("正在下载模组...")
@@ -822,7 +730,6 @@ class MultiplayerPage(QWidget):
         self.et_ip_label.setText("联机地址: 未获取")
         self.e4mc_progress.setVisible(True)
         self.e4mc_progress.setValue(0)
-        self._current_port = port
         self._current_e4mc_version = version_id
         self._current_loader_type = loader_type
         self._append_log(f"[e4mc] 开始下载 e4mc-{version_id}.jar ({loader_type})")
@@ -872,30 +779,21 @@ class MultiplayerPage(QWidget):
     def _start_easytier_host(self):
         room = self.et_room_edit.text().strip()
         password = self.et_password_edit.text().strip()
-        port = self.et_easytier_port_edit.text().strip()
         enable_relay = self.et_relay_check.isChecked()
         if not room:
             QMessageBox.warning(self, "提示", "请输入房间名")
             return
         if not password:
             password = "123456"
-        if not port:
-            port = "25565"
-        try:
-            int(port)
-        except ValueError:
-            QMessageBox.warning(self, "提示", "端口必须是数字")
-            return
 
         self.et_host_btn.setEnabled(False)
         self.et_join_btn.setEnabled(False)
         self.et_status_label.setText("正在开房...")
         self.et_copy_btn.setVisible(False)
         self.et_ip_label.setText("联机地址: 未获取")
-        self._current_port = port
         self.et_peer_label.setVisible(True)
         self.et_peer_list.setVisible(True)
-        self._append_log(f"[EasyTier] 房主开房: {room} (端口: {port})")
+        self._append_log(f"[EasyTier] 房主开房: {room}")
 
         success = self.worker.start_host(room, password, "MCOpen_Host", self, enable_relay)
         if not success:
@@ -933,10 +831,10 @@ class MultiplayerPage(QWidget):
             QMessageBox.information(self, "加入房间教程",
                 "已成功加入虚拟网络！\n\n"
                 "请在游戏内按以下步骤操作：\n"
-                "1. 向房主索要他的虚拟 IP 和端口\n"
+                "1. 向房主索要他的虚拟 IP\n"
                 "2. 启动 Minecraft 客户端，进入多人游戏\n"
                 "3. 点击「添加服务器」或「直接连接」\n"
-                "4. 输入房主的 IP:端口（例如 10.126.126.1:25565）\n"
+                "4. 输入房主的虚拟 IP（例如 10.126.126.1）\n"
                 "5. 点击「加入」即可联机！\n\n"
                 "提示：房主的虚拟 IP 可在他的启动器联机卡片上查看。"
             )
@@ -981,22 +879,20 @@ class MultiplayerPage(QWidget):
                 self.et_peer_list.setVisible(False)
 
     def _on_easytier_ip(self, ip):
-        port = self.et_easytier_port_edit.text().strip() or "25565"
-        self.et_ip_label.setText(f"联机地址: {ip}:{port}")
+        self.et_ip_label.setText(f"联机地址: {ip}")
         self._append_log(f"[EasyTier] 虚拟IP: {ip}")
-        self._append_log(f"[EasyTier] 朋友在游戏内输入 {ip}:{port} 即可加入")
+        self._append_log(f"[EasyTier] 朋友在游戏内输入 {ip} 即可加入")
 
     def _on_peers_updated(self, peers):
         if not peers:
             self.et_peer_list.setText("暂无其他成员")
             return
-        port = self.et_easytier_port_edit.text().strip() or "25565"
         lines = []
         for peer in peers:
             ip = peer.get("ip", "")
             hostname = peer.get("hostname", "未知")
             if ip:
-                lines.append(f"{hostname}  -  {ip}:{port}")
+                lines.append(f"{hostname}  -  {ip}")
             else:
                 lines.append(f"{hostname}  -  未获取到IP")
         self.et_peer_list.setText("\n".join(lines))
@@ -1010,7 +906,6 @@ class MultiplayerPage(QWidget):
         if text and text != "未获取":
             from PyQt5.QtWidgets import QApplication
             QApplication.clipboard().setText(text)
-            # 根据当前哪个联机方式在运行决定更新哪个状态标签（简单起见，两个都更新）
             self.e4mc_status_label.setText("地址已复制")
             self.et_status_label.setText("地址已复制")
             self._append_log(f"[联机] 已复制地址: {text}")

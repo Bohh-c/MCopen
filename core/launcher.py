@@ -425,13 +425,15 @@ class AssetChecker:
 class AccountManager:
     def create_offline(self, name):
         import uuid as uuid_module
+        raw_uuid = str(uuid_module.uuid4()).replace("-", "")
+        print(f"[DEBUG] 生成离线账号: {name}, accessToken=0, userType=legacy")
         return {
             "name": name,
-            "uuid": str(uuid_module.uuid4()).replace("-", ""),
-            "accessToken": str(uuid_module.uuid4()),
-            "clientToken": str(uuid_module.uuid4()),
+            "uuid": raw_uuid,
+            "accessToken": "0",
+            "clientToken": "0",
             "authType": "offline",
-            "userType": "offline"
+            "userType": "legacy"
         }
 
     def microsoft_oauth(self):

@@ -1,13 +1,21 @@
 {
   "accounts": [
     {
-      "name": "篮子",
-      "uuid": "522f3a09a9a34d319eb03af17c5b62e8",
-      "accessToken": "fe2bdc1e-1ca0-4180-b139-7e29cff4f645",
-      "clientToken": "6e11a699-e090-4789-92ff-1979d8a8e07e",
+      "name": "78",
+      "uuid": "2e1aa6edaac54d48a288bd827324cae6",
+      "accessToken": "e5d0e065-9dca-4c5c-aca0-de7aab7ecd4d",
+      "clientToken": "ad9d9fdc-b03e-4c5a-ba87-6394af6d74ce",
       "authType": "offline",
       "userType": "offline"
+    },
+    {
+      "name": "1234221",
+      "uuid": "3ffb7d301c254ff1bcaddbf8402ec5cb",
+      "accessToken": "0",
+      "clientToken": "0",
+      "authType": "offline",
+      "userType": "legacy"
     }
   ],
-  "default_idx": 0
+  "default_idx": 1
 }
