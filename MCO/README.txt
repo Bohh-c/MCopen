@@ -1,3 +1,0 @@
-MCOpen 启动器工作目录
-工作室：5oqE6KKt56eB5Yuf6L2755+/Nzc4XzIwMjYtMDctMTBUMTA6MjM6MjkuMTQxMTk0
-请勿删除此目录，否则启动器可能无法正常工作
