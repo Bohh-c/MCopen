@@ -1,5 +1,6 @@
 import os
 import json
+import sys
 import subprocess
 import threading
 import requests
@@ -426,7 +427,7 @@ class AccountManager:
     def create_offline(self, name):
         import uuid as uuid_module
         raw_uuid = str(uuid_module.uuid4()).replace("-", "")
-        print(f"[DEBUG] 生成离线账号: {name}, accessToken=0, userType=legacy")
+        #print(f"[DEBUG] 生成离线账号: {name}, accessToken=0, userType=legacy")
         return {
             "name": name,
             "uuid": raw_uuid,
@@ -525,7 +526,22 @@ class JavaLaunchEngine:
         final_game_args = loader.build_game_args(raw_args)
 
         args = [self.java] + final_jvm + [cfg["mainClass"]] + final_game_args
-        proc = subprocess.Popen(args, cwd=self.root, env=env)
+
+        if sys.platform == "win32":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            creationflags = subprocess.CREATE_NO_WINDOW
+        else:
+            startupinfo = None
+            creationflags = 0
+
+        proc = subprocess.Popen(
+            args,
+            cwd=self.root,
+            env=env,
+            startupinfo=startupinfo,
+            creationflags=creationflags
+        )
         return proc
 
 class UnifiedLaunchCore:

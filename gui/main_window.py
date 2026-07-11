@@ -1,4 +1,4 @@
-"""主窗口 - 侧边栏导航 + 页面切换 + 自适应布局 + i18n"""
+"""主窗口"""
 
 import os
 import json
@@ -19,7 +19,9 @@ from gui.mod_page import ModPage
 from gui.mod_download_page import ModDownloadPage
 from gui.loader_page import LoaderPage
 from gui.multiplayer_page import MultiplayerPage
+from gui.toolbox_page import ToolboxPage
 from gui.server_page import ServerPage
+from gui.settings_page import SettingsPage
 from gui.widgets import Card, SectionTitle, SubTitle
 from gui.i18n import tr, set_lang, LANG as i18n_lang
 
@@ -31,8 +33,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(tr("app_title"))
-        self.resize(1080, 720)
-        self.setMinimumSize(820, 580)
+        self.setFixedSize(1080, 720)
 
         self.game_root = os.path.join(get_project_root(), ".minecraft")
         self.current_theme = DEFAULT_THEME
@@ -101,10 +102,11 @@ class MainWindow(QMainWindow):
             (tr("nav_mod"), 3),
             (tr("nav_mod_download"), 4),
             (tr("nav_multiplayer"), 5),
-            (tr("nav_server"), 6),
-            (tr("nav_account"), 7),
-            (tr("nav_log"), 8),
-            (tr("nav_settings"), 9),
+            (tr("nav_toolbox"), 6),
+            (tr("nav_server"), 7),
+            (tr("nav_account"), 8),
+            (tr("nav_log"), 9),
+            (tr("nav_settings"), 10),
         ]
 
         for text, idx in nav_items:
@@ -130,7 +132,7 @@ class MainWindow(QMainWindow):
 
         self.home_page = HomePage()
         self.home_page.launch_worker.game_started_signal.connect(self._on_game_started)
-        self.home_page.switch_to_account.connect(lambda: self._switch_page(7))
+        self.home_page.switch_to_account.connect(lambda: self._switch_page(8))
         self.page_stack.addWidget(self.home_page)
 
         self.download_page = DownloadPage()
@@ -152,6 +154,9 @@ class MainWindow(QMainWindow):
         self.multiplayer_page = MultiplayerPage()
         self.page_stack.addWidget(self.multiplayer_page)
 
+        self.toolbox_page = ToolboxPage()
+        self.page_stack.addWidget(self.toolbox_page)
+
         self.server_page = ServerPage()
         self.page_stack.addWidget(self.server_page)
 
@@ -163,7 +168,8 @@ class MainWindow(QMainWindow):
         self.log_page = LogPage()
         self.page_stack.addWidget(self.log_page)
 
-        self.settings_page = self._build_settings_page()
+        self.settings_page = SettingsPage()
+        self.settings_page.settings_saved.connect(self._on_settings_saved)
         self.page_stack.addWidget(self.settings_page)
 
         central = QWidget()
@@ -177,6 +183,10 @@ class MainWindow(QMainWindow):
     def _on_accounts_changed(self):
         self.home_page.refresh_current_account()
 
+    def _on_settings_saved(self):
+        self._load_settings()
+        self.home_page.refresh_versions()
+
     def _rebuild_all_pages(self):
         current_idx = self.page_stack.currentIndex()
         self.page_stack.removeWidget(self.home_page)
@@ -185,6 +195,7 @@ class MainWindow(QMainWindow):
         self.page_stack.removeWidget(self.mod_page)
         self.page_stack.removeWidget(self.mod_download_page)
         self.page_stack.removeWidget(self.multiplayer_page)
+        self.page_stack.removeWidget(self.toolbox_page)
         self.page_stack.removeWidget(self.server_page)
         self.page_stack.removeWidget(self.account_page)
         self.page_stack.removeWidget(self.log_page)
@@ -192,7 +203,7 @@ class MainWindow(QMainWindow):
 
         self.home_page = HomePage()
         self.home_page.launch_worker.game_started_signal.connect(self._on_game_started)
-        self.home_page.switch_to_account.connect(lambda: self._switch_page(7))
+        self.home_page.switch_to_account.connect(lambda: self._switch_page(8))
         self.page_stack.insertWidget(0, self.home_page)
 
         self.download_page = DownloadPage()
@@ -214,19 +225,23 @@ class MainWindow(QMainWindow):
         self.multiplayer_page = MultiplayerPage()
         self.page_stack.insertWidget(5, self.multiplayer_page)
 
+        self.toolbox_page = ToolboxPage()
+        self.page_stack.insertWidget(6, self.toolbox_page)
+
         self.server_page = ServerPage()
-        self.page_stack.insertWidget(6, self.server_page)
+        self.page_stack.insertWidget(7, self.server_page)
 
         self.account_page = AccountPage()
         self.account_page.accounts_changed.connect(self._on_accounts_changed)
-        self.page_stack.insertWidget(7, self.account_page)
+        self.page_stack.insertWidget(8, self.account_page)
 
         from gui.log_page import LogPage
         self.log_page = LogPage()
-        self.page_stack.insertWidget(8, self.log_page)
+        self.page_stack.insertWidget(9, self.log_page)
 
-        self.settings_page = self._build_settings_page()
-        self.page_stack.insertWidget(9, self.settings_page)
+        self.settings_page = SettingsPage()
+        self.settings_page.settings_saved.connect(self._on_settings_saved)
+        self.page_stack.insertWidget(10, self.settings_page)
 
         self.page_stack.setCurrentIndex(current_idx)
 
@@ -328,11 +343,11 @@ class MainWindow(QMainWindow):
             btn.style().unpolish(btn)
             btn.style().polish(btn)
             btn.update()
-        if index == 8:
+        if index == 9:
             self.log_page.set_game_root(self.game_root)
 
     def _on_game_started(self):
-        self._switch_page(8)
+        self._switch_page(9)
 
     def _on_theme_changed(self):
         theme_key = self.theme_combo.currentData()
@@ -359,13 +374,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self._save_settings()
         try:
-            self.multiplayer_page.worker.stop_node()
+            if hasattr(self.multiplayer_page, '_zt_leave'):
+                self.multiplayer_page._zt_leave()
         except Exception:
             pass
         super().closeEvent(event)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        width = self.width()
-        sidebar_width = min(max(180, width // 6), 240)
-        self.sidebar_widget.setFixedWidth(sidebar_width)

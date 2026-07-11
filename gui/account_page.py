@@ -5,11 +5,12 @@ from PyQt5.QtCore import Qt, pyqtSignal, QSize
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QListWidget, QListWidgetItem, QMessageBox,
+    QScrollArea, QFrame,
 )
 from PyQt5.QtGui import QFont
 
 from core.launcher import AccountManager
-from gui.widgets import Card, SectionTitle, SubTitle, StatusBadge
+from gui.widgets import SectionTitle, SubTitle, StatusBadge
 from gui.i18n import tr
 
 
@@ -70,7 +71,14 @@ class AccountPage(QWidget):
         return None
 
     def _build_ui(self):
-        main_layout = QVBoxLayout(self)
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        scroll_area.setWidget(content)
+
+        main_layout = QVBoxLayout(content)
         main_layout.setContentsMargins(32, 24, 32, 24)
         main_layout.setSpacing(20)
 
@@ -85,57 +93,66 @@ class AccountPage(QWidget):
         sub = SubTitle(tr("acc_subtitle"))
         main_layout.addWidget(sub)
 
-        card1 = Card()
-        card1_layout = QVBoxLayout(card1)
-        card1_layout.setSpacing(12)
+        block1_label = QLabel(tr("acc_saved"))
+        block1_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block1_label)
 
-        card1_title = QLabel(tr("acc_saved"))
-        card1_title.setStyleSheet("font-weight: bold; font-size: 14px;")
-        card1_layout.addWidget(card1_title)
+        block1 = QFrame()
+        block1.setObjectName("card")
+        block1.setFrameShape(QFrame.StyledPanel)
+        block1_layout = QVBoxLayout(block1)
+        block1_layout.setSpacing(12)
 
         self.account_list = QListWidget()
         self.account_list.setMinimumHeight(150)
         self.account_list.setAlternatingRowColors(True)
         self.account_list.itemClicked.connect(self._on_account_selected)
-        card1_layout.addWidget(self.account_list)
+        block1_layout.addWidget(self.account_list)
 
-        acc_btn_row = QHBoxLayout()
+        btn_row = QHBoxLayout()
         self.set_default_btn = QPushButton(tr("acc_set_default"))
         self.set_default_btn.setObjectName("btnSecondary")
         self.set_default_btn.setEnabled(False)
         self.set_default_btn.clicked.connect(self._set_default_account)
-        acc_btn_row.addWidget(self.set_default_btn)
+        btn_row.addWidget(self.set_default_btn)
 
         self.delete_btn = QPushButton(tr("acc_delete_btn"))
         self.delete_btn.setObjectName("btnDanger")
         self.delete_btn.setEnabled(False)
         self.delete_btn.clicked.connect(self._delete_account)
-        acc_btn_row.addWidget(self.delete_btn)
-        acc_btn_row.addStretch()
-        card1_layout.addLayout(acc_btn_row)
+        btn_row.addWidget(self.delete_btn)
+        btn_row.addStretch()
+        block1_layout.addLayout(btn_row)
 
-        main_layout.addWidget(card1)
+        main_layout.addWidget(block1)
 
-        card2 = Card()
-        card2_layout = QVBoxLayout(card2)
-        card2_layout.setSpacing(12)
+        block2_label = QLabel(tr("acc_add"))
+        block2_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block2_label)
 
-        card2_title = QLabel(tr("acc_add"))
-        card2_title.setStyleSheet("font-weight: bold; font-size: 14px;")
-        card2_layout.addWidget(card2_title)
+        block2 = QFrame()
+        block2.setObjectName("card")
+        block2.setFrameShape(QFrame.StyledPanel)
+        block2_layout = QVBoxLayout(block2)
+        block2_layout.setSpacing(12)
 
         form_row = QHBoxLayout()
         self.offline_name_edit = QLineEdit()
         self.offline_name_edit.setPlaceholderText(tr("acc_name_placeholder"))
-        form_row.addWidget(self.offline_name_edit)
+        self.offline_name_edit.setMinimumHeight(34)
+        form_row.addWidget(self.offline_name_edit, 1)
         self.add_offline_btn = QPushButton(tr("acc_add_btn"))
         self.add_offline_btn.setMinimumHeight(36)
         self.add_offline_btn.clicked.connect(self._add_offline_account)
         form_row.addWidget(self.add_offline_btn)
-        card2_layout.addLayout(form_row)
+        block2_layout.addLayout(form_row)
 
-        main_layout.addWidget(card2)
+        main_layout.addWidget(block2)
         main_layout.addStretch()
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll_area)
 
     def _add_offline_account(self):
         name = self.offline_name_edit.text().strip()

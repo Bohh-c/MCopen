@@ -1,7 +1,7 @@
-"""自定义Widget组件"""
+"""自定义Widget组件 - 包含行布局工具函数"""
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QFrame, QLabel, QVBoxLayout, QHBoxLayout, QWidget
+from PyQt5.QtWidgets import QFrame, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QPushButton
 from PyQt5.QtGui import QFont
 
 
@@ -10,9 +10,6 @@ class Card(QFrame):
         super().__init__(parent)
         self.setObjectName("card")
         self.setFrameShape(QFrame.StyledPanel)
-
-    def set_layout(self, layout):
-        self.setLayout(layout)
 
 
 class SectionTitle(QLabel):
@@ -82,18 +79,79 @@ class Separator(QFrame):
         self.setStyleSheet("background-color: palette(mid);")
 
 
-class IconLabel(QWidget):
-    def __init__(self, icon_text, text, parent=None):
-        super().__init__(parent)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        self.icon = QLabel(icon_text)
-        self.icon.setStyleSheet("font-size: 18px;")
-        self.label = QLabel(text)
-        layout.addWidget(self.icon)
-        layout.addWidget(self.label)
-        layout.addStretch()
+def make_tool_row(title, desc, btn_text, callback, color_hex):
+    """生成一行功能项：色条 + 标题/描述 + 按钮"""
+    row = QHBoxLayout()
+    row.setSpacing(12)
 
-    def set_text(self, text):
-        self.label.setText(text)
+    color_bar = QLabel()
+    color_bar.setFixedSize(6, 48)
+    color_bar.setStyleSheet(f"background-color: {color_hex}; border-radius: 3px;")
+    row.addWidget(color_bar)
+
+    text_widget = QWidget()
+    text_layout = QVBoxLayout(text_widget)
+    text_layout.setContentsMargins(0, 0, 0, 0)
+    text_layout.setSpacing(2)
+
+    title_label = QLabel(title)
+    title_label.setFont(QFont("", 12, QFont.Bold))
+    text_layout.addWidget(title_label)
+
+    desc_label = QLabel(desc)
+    desc_label.setWordWrap(True)
+    desc_label.setStyleSheet("color: palette(mid); font-size: 11px;")
+    text_layout.addWidget(desc_label)
+
+    row.addWidget(text_widget, 1)
+
+    btn = QPushButton(btn_text)
+    btn.setMinimumHeight(34)
+    btn.setMinimumWidth(100)
+    btn.setStyleSheet(f"""
+        QPushButton {{
+            background-color: {color_hex};
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 16px;
+            font-weight: bold;
+        }}
+        QPushButton:hover {{ background-color: {color_hex}dd; }}
+        QPushButton:pressed {{ background-color: {color_hex}bb; }}
+    """)
+    btn.clicked.connect(callback)
+    row.addWidget(btn)
+
+    return row
+
+
+def make_tool_row_with_widget(title, desc, widget, color_hex):
+    """生成一行：色条 + 标题/描述 + 自定义控件（如 QComboBox 或 QLineEdit）"""
+    row = QHBoxLayout()
+    row.setSpacing(12)
+
+    color_bar = QLabel()
+    color_bar.setFixedSize(6, 48)
+    color_bar.setStyleSheet(f"background-color: {color_hex}; border-radius: 3px;")
+    row.addWidget(color_bar)
+
+    text_widget = QWidget()
+    text_layout = QVBoxLayout(text_widget)
+    text_layout.setContentsMargins(0, 0, 0, 0)
+    text_layout.setSpacing(2)
+
+    title_label = QLabel(title)
+    title_label.setFont(QFont("", 12, QFont.Bold))
+    text_layout.addWidget(title_label)
+
+    desc_label = QLabel(desc)
+    desc_label.setWordWrap(True)
+    desc_label.setStyleSheet("color: palette(mid); font-size: 11px;")
+    text_layout.addWidget(desc_label)
+
+    row.addWidget(text_widget, 1)
+
+    row.addWidget(widget)
+
+    return row

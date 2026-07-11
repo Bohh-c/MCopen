@@ -1,17 +1,15 @@
-"""下载页面 - MC版本下载（客户端/服务端）"""
-
 import os
 import threading
 
-from PyQt5.QtCore import Qt, pyqtSignal, QObject, QSize, QEvent
+from PyQt5.QtCore import Qt, pyqtSignal, QObject, QSize
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QComboBox, QProgressBar, QListWidget, QListWidgetItem,
-    QMessageBox, QCompleter, QScrollArea,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QLineEdit, QComboBox, QProgressBar, QListWidget,
+    QListWidgetItem, QMessageBox, QScrollArea, QFrame,
 )
 from PyQt5.QtGui import QFont
 
-from gui.widgets import Card, SectionTitle, SubTitle, StatusBadge
+from gui.widgets import SectionTitle, SubTitle, StatusBadge
 from gui.downloader import (
     fetch_version_manifest, find_version,
     download_client, download_server,
@@ -75,11 +73,10 @@ class DownloadPage(QWidget):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        content_widget = QWidget()
-        scroll_area.setWidget(content_widget)
+        content = QWidget()
+        scroll_area.setWidget(content)
 
-        main_layout = QVBoxLayout(content_widget)
-        self._main_layout = main_layout
+        main_layout = QVBoxLayout(content)
         main_layout.setContentsMargins(32, 24, 32, 24)
         main_layout.setSpacing(20)
 
@@ -91,100 +88,86 @@ class DownloadPage(QWidget):
         header.addWidget(self.status_badge)
         main_layout.addLayout(header)
 
-        sub = SubTitle("从 Mojang 官方源下载 Minecraft 客户端或服务端")
+        sub = SubTitle("从官方源下客户端或服务端")
         main_layout.addWidget(sub)
 
-        card1 = Card()
-        card1_layout = QVBoxLayout(card1)
-        card1_layout.setSpacing(14)
+        block1_label = QLabel("下载设置")
+        block1_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block1_label)
 
-        card1_title = QLabel("下载设置")
-        card1_font = QFont()
-        card1_font.setPointSize(13)
-        card1_font.setBold(True)
-        card1_title.setFont(card1_font)
-        card1_layout.addWidget(card1_title)
+        block1 = QFrame()
+        block1.setObjectName("card")
+        block1.setFrameShape(QFrame.StyledPanel)
+        block1_layout = QVBoxLayout(block1)
+        block1_layout.setSpacing(12)
 
         type_row = QHBoxLayout()
+        type_row.setSpacing(10)
         type_row.addWidget(QLabel("下载类型:"))
         self.type_combo = QComboBox()
-        self.type_combo.addItems(["客户端 (Client)", "服务端 (Server)"])
-        self.type_combo.setMinimumHeight(36)
-        type_font = QFont()
-        type_font.setPointSize(11)
-        self.type_combo.setFont(type_font)
+        self.type_combo.addItems(["客户端", "服务端"])
         self.type_combo.currentIndexChanged.connect(self._on_type_changed)
         type_row.addWidget(self.type_combo)
         type_row.addStretch()
+        block1_layout.addLayout(type_row)
 
-        save_dir_row = QHBoxLayout()
-        save_dir_row.addWidget(QLabel("保存目录:"))
+        dir_row = QHBoxLayout()
+        dir_row.setSpacing(10)
+        dir_row.addWidget(QLabel("保存目录:"))
         self.save_dir_edit = QLineEdit(self.game_root)
-        self.save_dir_edit.setMinimumHeight(36)
-        self.save_dir_edit.setFont(type_font)
-        save_dir_row.addWidget(self.save_dir_edit)
-        browse_btn = QPushButton("浏  览")
+        dir_row.addWidget(self.save_dir_edit, 1)
+        browse_btn = QPushButton("浏览")
         browse_btn.setObjectName("btnSecondary")
-        browse_btn.setFixedWidth(80)
-        browse_btn.setMinimumHeight(36)
-        browse_btn.setFont(type_font)
         browse_btn.clicked.connect(self._select_save_dir)
-        save_dir_row.addWidget(browse_btn)
+        dir_row.addWidget(browse_btn)
+        block1_layout.addLayout(dir_row)
 
-        card1_layout.addLayout(type_row)
-        card1_layout.addLayout(save_dir_row)
-        main_layout.addWidget(card1)
+        main_layout.addWidget(block1)
 
-        card2 = Card()
-        card2_layout = QVBoxLayout(card2)
-        card2_layout.setSpacing(14)
+        block2_label = QLabel("版本选择")
+        block2_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block2_label)
 
-        card2_title = QLabel("选择版本")
-        card2_title.setFont(card1_font)
-        card2_layout.addWidget(card2_title)
+        block2 = QFrame()
+        block2.setObjectName("card")
+        block2.setFrameShape(QFrame.StyledPanel)
+        block2_layout = QVBoxLayout(block2)
+        block2_layout.setSpacing(12)
 
         search_row = QHBoxLayout()
+        search_row.setSpacing(10)
         search_row.addWidget(QLabel("搜索版本:"))
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("输入版本号搜索，如 1.21、26.2...")
-        self.search_edit.setMinimumHeight(32)
-        self.search_edit.setFont(type_font)
+        self.search_edit.setPlaceholderText("输版本号，比如 1.21")
         self.search_edit.textChanged.connect(self._filter_versions)
-        search_row.addWidget(self.search_edit)
-        search_row.addStretch()
-        card2_layout.addLayout(search_row)
+        search_row.addWidget(self.search_edit, 1)
+        block2_layout.addLayout(search_row)
 
         filter_row = QHBoxLayout()
+        filter_row.setSpacing(10)
         filter_row.addWidget(QLabel("类型筛选:"))
         self.filter_combo = QComboBox()
-        self.filter_combo.addItems(["全部", "正式版 (release)", "快照版 (snapshot)"])
-        self.filter_combo.setMinimumHeight(32)
-        self.filter_combo.setFont(type_font)
+        self.filter_combo.addItems(["全部", "正式版", "快照版"])
         self.filter_combo.currentIndexChanged.connect(self._filter_versions)
         filter_row.addWidget(self.filter_combo)
         filter_row.addStretch()
 
-        self.fetch_btn = QPushButton("获取版本列表")
+        self.fetch_btn = QPushButton("刷出来")
         self.fetch_btn.setObjectName("btnSecondary")
-        self.fetch_btn.setMinimumHeight(36)
-        self.fetch_btn.setFont(type_font)
         self.fetch_btn.clicked.connect(self._fetch_versions)
         filter_row.addWidget(self.fetch_btn)
-        card2_layout.addLayout(filter_row)
+        block2_layout.addLayout(filter_row)
 
         self.version_list = QListWidget()
         self.version_list.setMinimumHeight(250)
-        self.version_list.setMaximumHeight(600)
-        self.version_list.setFont(type_font)
+        self.version_list.setMaximumHeight(400)
         self.version_list.setAlternatingRowColors(True)
         self.version_list.itemClicked.connect(self._on_version_selected)
-        card2_layout.addWidget(self.version_list)
+        block2_layout.addWidget(self.version_list)
 
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self.download_btn = QPushButton("下载选中版本")
-        self.download_btn.setMinimumHeight(40)
-        self.download_btn.setMinimumWidth(160)
+        self.download_btn = QPushButton("下这个")
         dl_font = QFont()
         dl_font.setPointSize(12)
         dl_font.setBold(True)
@@ -192,34 +175,34 @@ class DownloadPage(QWidget):
         self.download_btn.setEnabled(False)
         self.download_btn.clicked.connect(self._start_download)
         btn_row.addWidget(self.download_btn)
-        card2_layout.addLayout(btn_row)
+        block2_layout.addLayout(btn_row)
 
-        main_layout.addWidget(card2)
+        main_layout.addWidget(block2)
 
-        card3 = Card()
-        card3_layout = QVBoxLayout(card3)
-        card3_layout.setSpacing(12)
+        block3_label = QLabel("进度")
+        block3_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block3_label)
 
-        progress_title = QLabel("下载进度")
-        progress_title.setFont(card1_font)
-        card3_layout.addWidget(progress_title)
+        block3 = QFrame()
+        block3.setObjectName("card")
+        block3.setFrameShape(QFrame.StyledPanel)
+        block3_layout = QVBoxLayout(block3)
+        block3_layout.setSpacing(12)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setMinimumHeight(24)
-        card3_layout.addWidget(self.progress_bar)
+        block3_layout.addWidget(self.progress_bar)
 
-        self.progress_label = QLabel("等待下载任务...")
-        self.progress_label.setFont(type_font)
-        card3_layout.addWidget(self.progress_label)
+        self.progress_label = QLabel("等着呢...")
+        block3_layout.addWidget(self.progress_label)
 
-        main_layout.addWidget(card3)
+        main_layout.addWidget(block3)
         main_layout.addStretch()
 
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(0, 0, 0, 0)
-        outer_layout.addWidget(scroll_area)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll_area)
 
         self.resizeEvent = self._on_resize
 
@@ -227,7 +210,7 @@ class DownloadPage(QWidget):
         height = event.size().height()
         header_height = 120
         card1_height = 140
-        card3_height = 120
+        card3_height = 100
         available = height - header_height - card1_height - card3_height - 80
         self.version_list.setMaximumHeight(max(250, available))
         event.accept()
@@ -251,7 +234,7 @@ class DownloadPage(QWidget):
     def _fetch_versions(self):
         self.fetch_btn.setEnabled(False)
         self.status_badge.set_status("info", "获取中...")
-        self.progress_label.setText("正在连接 Mojang API...")
+        self.progress_label.setText("连 Mojang 中...")
         self.versions = []
         self.version_list.clear()
         thread = threading.Thread(target=self.worker.fetch_versions, daemon=True)
@@ -289,7 +272,7 @@ class DownloadPage(QWidget):
     def _on_version_selected(self, item):
         self.download_btn.setEnabled(True)
         v = item.data(Qt.UserRole)
-        self.download_btn.setText(f"下载 {v['id']}")
+        self.download_btn.setText(f"下 {v['id']}")
 
     def _start_download(self):
         current = self.version_list.currentItem()
@@ -298,7 +281,7 @@ class DownloadPage(QWidget):
 
         save_dir = self.save_dir_edit.text().strip()
         if not save_dir:
-            QMessageBox.warning(self, "提示", "请设置保存目录")
+            QMessageBox.warning(self, "提示", "设个保存目录")
             return
 
         version_info = current.data(Qt.UserRole)
@@ -307,7 +290,7 @@ class DownloadPage(QWidget):
         self.download_btn.setEnabled(False)
         self.fetch_btn.setEnabled(False)
         self.progress_bar.setValue(0)
-        self.status_badge.set_status("info", "下载中...")
+        self.status_badge.set_status("info", "下着呢...")
 
         thread = threading.Thread(
             target=self.worker.download,
@@ -324,8 +307,8 @@ class DownloadPage(QWidget):
         self.download_btn.setEnabled(True)
         self.fetch_btn.setEnabled(True)
         if success:
-            self.status_badge.set_status("normal", "完成")
-            QMessageBox.information(self, "下载完成", msg)
+            self.status_badge.set_status("normal", "完事")
+            QMessageBox.information(self, "下好了", msg)
         else:
-            self.status_badge.set_status("error", "失败")
-            QMessageBox.critical(self, "下载失败", msg)
+            self.status_badge.set_status("error", "完了")
+            QMessageBox.critical(self, "下炸了", msg)

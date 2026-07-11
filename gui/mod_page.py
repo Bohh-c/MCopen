@@ -1,5 +1,3 @@
-"""模组管理页面"""
-
 import os
 import shutil
 import zipfile
@@ -9,12 +7,12 @@ from PyQt5.QtCore import Qt, QSize, pyqtSignal
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
-    QComboBox, QScrollArea, QGridLayout,
+    QComboBox, QScrollArea, QFrame,
 )
-from PyQt5.QtGui import QFont, QIcon
+from PyQt5.QtGui import QFont
 
 from core.cli import get_project_root
-from gui.widgets import Card, SectionTitle, SubTitle, StatusBadge
+from gui.widgets import SectionTitle, SubTitle, StatusBadge
 from gui.i18n import tr
 
 
@@ -130,63 +128,62 @@ class ModPage(QWidget):
         sub = SubTitle(tr("mod_subtitle"))
         main_layout.addWidget(sub)
 
-        card = Card()
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(14)
+        block1_label = QLabel("模组列表")
+        block1_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block1_label)
 
-        card_title_font = QFont()
-        card_title_font.setPointSize(13)
-        card_title_font.setBold(True)
+        block1 = QFrame()
+        block1.setObjectName("card")
+        block1.setFrameShape(QFrame.StyledPanel)
+        block1_layout = QVBoxLayout(block1)
+        block1_layout.setSpacing(12)
 
         top_row = QHBoxLayout()
+        top_row.setSpacing(10)
         top_row.addWidget(QLabel(tr("mod_select_version")))
         self.version_combo = QComboBox()
-        self.version_combo.setMinimumHeight(32)
         self.version_combo.setMinimumWidth(200)
         self.version_combo.currentIndexChanged.connect(self._on_version_changed)
         top_row.addWidget(self.version_combo)
-        top_row.addSpacing(16)
+        top_row.addStretch()
 
         self.add_btn = QPushButton(tr("mod_add"))
-        self.add_btn.setMinimumHeight(32)
+        self.add_btn.setMinimumWidth(80)
         self.add_btn.clicked.connect(self._add_mod)
         top_row.addWidget(self.add_btn)
 
         self.open_folder_btn = QPushButton(tr("mod_open_folder"))
         self.open_folder_btn.setObjectName("btnSecondary")
-        self.open_folder_btn.setMinimumHeight(32)
+        self.open_folder_btn.setMinimumWidth(110)
         self.open_folder_btn.clicked.connect(self._open_mods_folder)
         top_row.addWidget(self.open_folder_btn)
 
         self.refresh_btn = QPushButton(tr("mod_refresh"))
         self.refresh_btn.setObjectName("btnSecondary")
-        self.refresh_btn.setMinimumHeight(32)
+        self.refresh_btn.setMinimumWidth(70)
         self.refresh_btn.clicked.connect(self.refresh_mods)
         top_row.addWidget(self.refresh_btn)
 
-        top_row.addStretch()
-        card_layout.addLayout(top_row)
+        block1_layout.addLayout(top_row)
 
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
 
         self.enable_btn = QPushButton(tr("mod_enable"))
         self.enable_btn.setObjectName("btnSecondary")
-        self.enable_btn.setMinimumHeight(32)
         self.enable_btn.setEnabled(False)
         self.enable_btn.clicked.connect(self._enable_mod)
         btn_row.addWidget(self.enable_btn)
 
         self.disable_btn = QPushButton(tr("mod_disable"))
         self.disable_btn.setObjectName("btnSecondary")
-        self.disable_btn.setMinimumHeight(32)
         self.disable_btn.setEnabled(False)
         self.disable_btn.clicked.connect(self._disable_mod)
         btn_row.addWidget(self.disable_btn)
 
         self.delete_btn = QPushButton(tr("mod_delete"))
         self.delete_btn.setObjectName("btnDanger")
-        self.delete_btn.setMinimumHeight(32)
+        self.delete_btn.setMinimumWidth(50)
         self.delete_btn.setEnabled(False)
         self.delete_btn.clicked.connect(self._delete_mod)
         btn_row.addWidget(self.delete_btn)
@@ -197,16 +194,16 @@ class ModPage(QWidget):
         self.mod_count_label.setStyleSheet("color: palette(mid); font-size: 11px;")
         btn_row.addWidget(self.mod_count_label)
 
-        card_layout.addLayout(btn_row)
+        block1_layout.addLayout(btn_row)
 
         self.mod_list = QListWidget()
         self.mod_list.setMinimumHeight(400)
         self.mod_list.setAlternatingRowColors(True)
         self.mod_list.itemClicked.connect(self._on_mod_selected)
         self.mod_list.itemDoubleClicked.connect(self._toggle_mod)
-        card_layout.addWidget(self.mod_list)
+        block1_layout.addWidget(self.mod_list)
 
-        main_layout.addWidget(card)
+        main_layout.addWidget(block1)
         main_layout.addStretch()
 
         outer = QVBoxLayout(self)
@@ -235,8 +232,6 @@ class ModPage(QWidget):
         if version:
             self.current_version = version
             self.mods_dir = os.path.join(self.game_root, "mods")
-            if version and version != "Vanilla":
-                pass
             self.refresh_mods()
 
     def refresh_mods(self):

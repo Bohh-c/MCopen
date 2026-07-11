@@ -1,5 +1,3 @@
-"""模组加载器安装页面"""
-
 import os
 import threading
 import requests
@@ -20,7 +18,7 @@ from core.mod_loader import (
     install_fabric, install_quilt, install_forge, install_neoforge,
     get_installed_loaders, uninstall_loader,
 )
-from gui.widgets import Card, SectionTitle, SubTitle, StatusBadge
+from gui.widgets import SectionTitle, SubTitle, StatusBadge
 from gui.i18n import tr
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -86,10 +84,10 @@ class InstallWorker(QObject):
 
 
 LOADERS = [
-    {"id": "forge", "name": "Forge", "icon": "", "desc_zh": "最流行的模组加载器，兼容性强", "desc_en": "Most popular mod loader, great compatibility"},
-    {"id": "fabric", "name": "Fabric", "icon": "", "desc_zh": "轻量级，更新快，模组丰富", "desc_en": "Lightweight, fast updates, rich mod ecosystem"},
-    {"id": "neoforge", "name": "NeoForge", "icon": "", "desc_zh": "Forge的现代分支，性能优化", "desc_en": "Modern fork of Forge, performance optimized"},
-    {"id": "quilt", "name": "Quilt", "icon": "", "desc_zh": "Fabric的社区分支，注重模块化", "desc_en": "Community fork of Fabric, focused on modularity"},
+    {"id": "forge", "name": "Forge", "desc_zh": "最流行的模组加载器，兼容性强", "desc_en": "Most popular mod loader, great compatibility"},
+    {"id": "fabric", "name": "Fabric", "desc_zh": "轻量级，更新快，模组丰富", "desc_en": "Lightweight, fast updates, rich mod ecosystem"},
+    {"id": "neoforge", "name": "NeoForge", "desc_zh": "Forge的现代分支，性能优化", "desc_en": "Modern fork of Forge, performance optimized"},
+    {"id": "quilt", "name": "Quilt", "desc_zh": "Fabric的社区分支，注重模块化", "desc_en": "Community fork of Fabric, focused on modularity"},
 ]
 
 
@@ -134,60 +132,57 @@ class LoaderPage(QWidget):
         sub = SubTitle(tr("loader_subtitle"))
         main_layout.addWidget(sub)
 
-        card = Card()
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(14)
+        block1_label = QLabel(tr("loader_installed"))
+        block1_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block1_label)
 
-        card_title_font = QFont()
-        card_title_font.setPointSize(13)
-        card_title_font.setBold(True)
-
-        inst_title = QLabel(tr("loader_installed"))
-        inst_title.setFont(card_title_font)
-        card_layout.addWidget(inst_title)
+        block1 = QFrame()
+        block1.setObjectName("card")
+        block1.setFrameShape(QFrame.StyledPanel)
+        block1_layout = QVBoxLayout(block1)
+        block1_layout.setSpacing(12)
 
         self.installed_list = QListWidget()
         self.installed_list.setMaximumHeight(120)
         self.installed_list.setAlternatingRowColors(True)
-        card_layout.addWidget(self.installed_list)
+        block1_layout.addWidget(self.installed_list)
 
         inst_btn_row = QHBoxLayout()
+        inst_btn_row.setSpacing(10)
         self.refresh_inst_btn = QPushButton(tr("loader_fetch_versions"))
         self.refresh_inst_btn.setObjectName("btnSecondary")
-        self.refresh_inst_btn.setMinimumHeight(30)
         self.refresh_inst_btn.clicked.connect(self._refresh_installed)
         inst_btn_row.addWidget(self.refresh_inst_btn)
 
         self.uninstall_btn = QPushButton(tr("loader_uninstall"))
         self.uninstall_btn.setObjectName("btnDanger")
-        self.uninstall_btn.setMinimumHeight(30)
         self.uninstall_btn.setEnabled(False)
         self.uninstall_btn.clicked.connect(self._uninstall_selected)
         inst_btn_row.addWidget(self.uninstall_btn)
         inst_btn_row.addStretch()
-        card_layout.addLayout(inst_btn_row)
+        block1_layout.addLayout(inst_btn_row)
 
-        main_layout.addWidget(card)
+        main_layout.addWidget(block1)
 
-        card2 = Card()
-        card2_layout = QVBoxLayout(card2)
-        card2_layout.setSpacing(14)
+        block2_label = QLabel(tr("loader_available"))
+        block2_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block2_label)
 
-        avail_title = QLabel(tr("loader_available"))
-        avail_title.setFont(card_title_font)
-        card2_layout.addWidget(avail_title)
+        block2 = QFrame()
+        block2.setObjectName("card")
+        block2.setFrameShape(QFrame.StyledPanel)
+        block2_layout = QVBoxLayout(block2)
+        block2_layout.setSpacing(12)
 
         selector_row = QHBoxLayout()
         selector_row.setSpacing(10)
-
         selector_row.addWidget(QLabel(tr("loader_select_mc_version")))
         self.mc_version_combo = QComboBox()
-        self.mc_version_combo.setMinimumHeight(32)
         self.mc_version_combo.setMinimumWidth(150)
         self.mc_version_combo.currentIndexChanged.connect(self._on_mc_version_changed)
         selector_row.addWidget(self.mc_version_combo)
         selector_row.addStretch()
-        card2_layout.addLayout(selector_row)
+        block2_layout.addLayout(selector_row)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.setHandleWidth(2)
@@ -196,14 +191,14 @@ class LoaderPage(QWidget):
         loader_list_layout = QVBoxLayout(loader_list_frame)
         loader_list_layout.setContentsMargins(0, 0, 8, 0)
         loader_list_layout.setSpacing(8)
-        loader_list_label = QLabel("Loaders")
+        loader_list_label = QLabel("加载器")
         loader_list_label.setStyleSheet("font-weight: bold; font-size: 12px;")
         loader_list_layout.addWidget(loader_list_label)
 
         self.loader_list = QListWidget()
         self.loader_list.setMinimumWidth(160)
         for loader in LOADERS:
-            item = QListWidgetItem(f"{loader['icon']} {loader['name']}")
+            item = QListWidgetItem(f"{loader['name']}")
             item.setData(Qt.UserRole, loader["id"])
             item.setSizeHint(QSize(0, 44))
             self.loader_list.addItem(item)
@@ -231,9 +226,9 @@ class LoaderPage(QWidget):
         version_layout.addWidget(self.version_list)
 
         fetch_btn_row = QHBoxLayout()
+        fetch_btn_row.setSpacing(10)
         self.fetch_ver_btn = QPushButton(tr("loader_fetch_versions"))
         self.fetch_ver_btn.setObjectName("btnSecondary")
-        self.fetch_ver_btn.setMinimumHeight(32)
         self.fetch_ver_btn.clicked.connect(self._fetch_versions)
         fetch_btn_row.addWidget(self.fetch_ver_btn)
         fetch_btn_row.addStretch()
@@ -241,26 +236,29 @@ class LoaderPage(QWidget):
 
         splitter.addWidget(version_frame)
         splitter.setSizes([200, 500])
-        card2_layout.addWidget(splitter, 1)
+        block2_layout.addWidget(splitter, 1)
 
         install_row = QHBoxLayout()
+        install_row.setSpacing(10)
         self.install_btn = QPushButton(tr("loader_install"))
-        self.install_btn.setMinimumHeight(40)
-        self.install_btn.setMinimumWidth(180)
         self.install_btn.setEnabled(False)
         self.install_btn.clicked.connect(self._install_selected)
         install_row.addWidget(self.install_btn)
 
         self.install_progress = QProgressBar()
-        self.install_progress.setMinimumHeight(24)
         self.install_progress.setValue(0)
         self.install_progress.hide()
         install_row.addWidget(self.install_progress, 1)
 
         install_row.addStretch()
-        card2_layout.addLayout(install_row)
+        block2_layout.addLayout(install_row)
 
-        main_layout.addWidget(card2, 1)
+        self.install_status_label = QLabel("")
+        self.install_status_label.setStyleSheet("font-size: 11px; color: palette(mid); padding: 2px 0;")
+        self.install_status_label.hide()
+        block2_layout.addWidget(self.install_status_label)
+
+        main_layout.addWidget(block2, 1)
         main_layout.addStretch()
 
         outer = QVBoxLayout(self)
@@ -410,6 +408,8 @@ class LoaderPage(QWidget):
         self.fetch_ver_btn.setEnabled(False)
         self.install_progress.show()
         self.install_progress.setValue(0)
+        self.install_status_label.show()
+        self.install_status_label.setText("准备安装...")
         self.status_badge.set_status("info", tr("loader_installing"))
 
         self.install_thread = QThread()
@@ -426,13 +426,19 @@ class LoaderPage(QWidget):
         self.install_thread.start()
 
     def _on_install_progress(self, pct, msg):
+        self.install_progress.show()
         self.install_progress.setValue(pct)
-        self.install_progress.setFormat(f"{pct}% - {msg[:30]}")
+        self.install_status_label.setText(msg)
+        if pct >= 100:
+            self.install_progress.setFormat("100% 完成")
+        else:
+            self.install_progress.setFormat(f"{pct}%")
 
     def _on_install_finished(self, success, result, loader_type):
         self.install_progress.hide()
         self.install_btn.setEnabled(True)
         self.fetch_ver_btn.setEnabled(True)
+        self.install_status_label.hide()
         if success:
             self.status_badge.set_status("normal", tr("msg_install_success"))
             QMessageBox.information(self, tr("tip"), f"{tr('msg_install_success')}!\n{result}")

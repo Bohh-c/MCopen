@@ -1,5 +1,3 @@
-"""模组下载页面"""
-
 import os
 import threading
 import requests
@@ -9,13 +7,13 @@ from PyQt5.QtCore import Qt, QSize, pyqtSignal, QObject, QThread
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QListWidget, QListWidgetItem, QComboBox,
-    QScrollArea, QMessageBox, QProgressBar, QGridLayout,
+    QScrollArea, QMessageBox, QProgressBar, QFrame,
 )
 from PyQt5.QtGui import QFont
 
 from core.cli import get_project_root
 from core.mod_loader import scan_modrinth_mods, get_modrinth_versions, download_mod_file
-from gui.widgets import Card, SectionTitle, SubTitle, StatusBadge
+from gui.widgets import SectionTitle, SubTitle, StatusBadge
 from gui.i18n import tr
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -67,18 +65,6 @@ class ModDownloadPage(QWidget):
         self.game_root = path
         self._refresh_versions()
 
-    def _create_labeled_row(self, label_text, widget, label_width=120):
-        row = QHBoxLayout()
-        row.setSpacing(10)
-        label = QLabel(label_text)
-        label.setFixedWidth(label_width)
-        label_font = QFont()
-        label_font.setPointSize(11)
-        label.setFont(label_font)
-        row.addWidget(label)
-        row.addWidget(widget, 1)
-        return row
-
     def _build_ui(self):
         scroll_area = QScrollArea(self)
         scroll_area.setWidgetResizable(True)
@@ -102,12 +88,17 @@ class ModDownloadPage(QWidget):
         sub = SubTitle(tr("mod_dl_subtitle"))
         main_layout.addWidget(sub)
 
-        card = Card()
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(14)
+        block1_label = QLabel("搜索")
+        block1_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block1_label)
+
+        block1 = QFrame()
+        block1.setObjectName("card")
+        block1.setFrameShape(QFrame.StyledPanel)
+        block1_layout = QVBoxLayout(block1)
+        block1_layout.setSpacing(12)
 
         search_row = QHBoxLayout()
-        search_row.setSpacing(10)
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText(tr("mod_dl_search_placeholder"))
         self.search_edit.setMinimumHeight(34)
@@ -119,18 +110,17 @@ class ModDownloadPage(QWidget):
         self.search_btn.setMinimumWidth(100)
         self.search_btn.clicked.connect(self._search)
         search_row.addWidget(self.search_btn)
-        card_layout.addLayout(search_row)
+        block1_layout.addLayout(search_row)
 
         filter_row = QHBoxLayout()
-        filter_row.setSpacing(10)
-
+        filter_row.addWidget(QLabel(tr("mod_dl_version_filter")))
         self.version_combo = QComboBox()
         self.version_combo.setMinimumHeight(32)
         self.version_combo.setMinimumWidth(150)
-        filter_row.addWidget(QLabel(tr("mod_dl_version_filter")))
         filter_row.addWidget(self.version_combo)
 
         filter_row.addSpacing(16)
+        filter_row.addWidget(QLabel(tr("mod_dl_loader_filter")))
         self.loader_combo = QComboBox()
         self.loader_combo.setMinimumHeight(32)
         self.loader_combo.setMinimumWidth(120)
@@ -139,21 +129,30 @@ class ModDownloadPage(QWidget):
         self.loader_combo.addItem("Fabric", "fabric")
         self.loader_combo.addItem("NeoForge", "neoforge")
         self.loader_combo.addItem("Quilt", "quilt")
-        filter_row.addWidget(QLabel(tr("mod_dl_loader_filter")))
         filter_row.addWidget(self.loader_combo)
-
         filter_row.addStretch()
-        card_layout.addLayout(filter_row)
+        block1_layout.addLayout(filter_row)
+
+        main_layout.addWidget(block1)
+
+        block2_label = QLabel("结果")
+        block2_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block2_label)
+
+        block2 = QFrame()
+        block2.setObjectName("card")
+        block2.setFrameShape(QFrame.StyledPanel)
+        block2_layout = QVBoxLayout(block2)
+        block2_layout.setSpacing(12)
 
         self.mod_list = QListWidget()
         self.mod_list.setMinimumHeight(350)
         self.mod_list.setAlternatingRowColors(True)
         self.mod_list.itemClicked.connect(self._on_mod_selected)
         self.mod_list.setWordWrap(True)
-        card_layout.addWidget(self.mod_list)
+        block2_layout.addWidget(self.mod_list)
 
         dl_row = QHBoxLayout()
-        dl_row.setSpacing(10)
         self.download_btn = QPushButton(tr("mod_dl_download"))
         self.download_btn.setMinimumHeight(36)
         self.download_btn.setMinimumWidth(140)
@@ -173,9 +172,9 @@ class ModDownloadPage(QWidget):
         self.open_mods_btn.clicked.connect(self._open_mods_folder)
         dl_row.addWidget(self.open_mods_btn)
 
-        card_layout.addLayout(dl_row)
+        block2_layout.addLayout(dl_row)
 
-        main_layout.addWidget(card)
+        main_layout.addWidget(block2)
         main_layout.addStretch()
 
         outer = QVBoxLayout(self)
@@ -247,7 +246,7 @@ class ModDownloadPage(QWidget):
             self.status_badge.set_status("warning", "0")
             return
 
-        self.status_badge.set_status("normal", f"{len(mods)} mods")
+        self.status_badge.set_status("normal", f"{len(mods)} 个")
 
         for hit in mods:
             title = hit.get("title", "Unknown")
@@ -256,7 +255,6 @@ class ModDownloadPage(QWidget):
             followers = hit.get("follows", 0)
             categories = hit.get("categories", [])
             project_id = hit.get("project_id", "")
-            icon_url = hit.get("icon_url", "")
             description = hit.get("description", "")
 
             downloads_str = self._format_number(downloads)
@@ -265,15 +263,15 @@ class ModDownloadPage(QWidget):
 
             item = QListWidgetItem()
             item.setData(Qt.UserRole, {"project_id": project_id, "title": title})
-            display = f"📦 {title}"
+            display = f"{title}"
             if author:
                 display += f"  by {author}"
-            display += f"\n   💾 {tr('mod_dl_downloads')}: {downloads_str}  ⭐ {tr('mod_dl_followers')}: {followers_str}"
+            display += f"\n  下载: {downloads_str}  关注: {followers_str}"
             if cats:
-                display += f"\n   🏷️ {cats}"
+                display += f"\n  分类: {cats}"
             if description:
                 short_desc = description[:120] + "..." if len(description) > 120 else description
-                display += f"\n   {short_desc}"
+                display += f"\n  {short_desc}"
             item.setText(display)
             item.setToolTip(description)
             hint = item.sizeHint()
@@ -332,7 +330,7 @@ class ModDownloadPage(QWidget):
         if os.path.exists(save_path):
             reply = QMessageBox.question(
                 self, tr("tip"),
-                f"'{filename}' already exists. Overwrite?",
+                f"'{filename}' 已经存在，覆盖吗？",
                 QMessageBox.Yes | QMessageBox.No
             )
             if reply != QMessageBox.Yes:
@@ -374,4 +372,4 @@ class ModDownloadPage(QWidget):
         try:
             os.startfile(mods_dir)
         except Exception:
-            QMessageBox.information(self, tr("tip"), f"Mods folder:\n{mods_dir}")
+            QMessageBox.information(self, tr("tip"), f"模组目录:\n{mods_dir}")

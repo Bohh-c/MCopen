@@ -24,7 +24,40 @@
 
 **返回**：`subprocess.Popen` 进程对象
 
----
+
+### `launch_selected_version(game_root, java_path, selected_version, mem_min, mem_max, player_name, progress_callback)`
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `game_root` | str | .minecraft 目录路径 |
+| `java_path` | str | Java 可执行文件路径 |
+| `selected_version` | dict | 由 `scan_all_versions` 返回的版本项 |
+| `mem_min` | int | 最小内存（MB），默认 1024 |
+| `mem_max` | int | 最大内存（MB），默认 4096 |
+| `player_name` | str | 玩家名，默认 `"Player"` |
+| `progress_callback` | callable | 进度回调 `(pct, msg)` |
+
+**返回**：`subprocess.Popen` 进程对象
+
+
+### `scan_all_versions(game_root)`
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `game_root` | str | .minecraft 目录路径 |
+
+**返回**：版本列表 `[{folder_name, json_name, json_path}]`
+
+
+### `get_version_type(json_path, folder_name)`
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `json_path` | str | 版本 JSON 文件路径 |
+| `folder_name` | str | 版本文件夹名 |
+
+**返回**：`vanilla` / `forge` / `fabric` / `quilt`
+
 
 ## 一、版本解析模块
 
@@ -54,25 +87,25 @@
 | `jar_path` | str | 版本 JAR 文件路径 |
 | `ver_type` | str | 加载器类型 |
 
+
 ### 支持的加载器类型
 
 | 类型 | 说明 |
 |------|------|
 | `vanilla` | 原版 |
-| `forge` | Forge |
+| `forge` | Forge（使用官方 Maven 源） |
 | `neoforge` | NeoForge |
 | `fabric` | Fabric |
 | `quilt` | Quilt |
 
----
 
 ## 二、账号认证模块
 
 ### `create_offline_account(name)`
 
-| 参数 | 类型 | 说明  |
+| 参数 | 类型 | 说明 |
 |------|------|------|
-|`name`| str  |玩家名|
+| `name` | str | 玩家名 |
 
 **返回字段**：
 
@@ -80,8 +113,8 @@
 {
     "name": "Player",
     "uuid": "70b24680c1b9498f8322c473484ef6a8",
-    "accessToken": "uuid",
-    "clientToken": "uuid",
+    "accessToken": "0",
+    "clientToken": "70b24680c1b9498f8322c473484ef6a8",
     "authType": "offline",
-    "userType": "offline"
+    "userType": "legacy"
 }

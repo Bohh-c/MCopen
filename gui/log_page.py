@@ -1,5 +1,3 @@
-"""日志页面 - 查看和导出游戏日志"""
-
 import os
 from datetime import datetime
 
@@ -7,9 +5,11 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTextEdit, QMessageBox, QComboBox, QFileDialog,
+    QScrollArea, QFrame,
 )
+from PyQt5.QtGui import QFont
 
-from gui.widgets import Card, SectionTitle, SubTitle
+from gui.widgets import SectionTitle, SubTitle
 
 
 class LogPage(QWidget):
@@ -23,37 +23,49 @@ class LogPage(QWidget):
         self._scan_log_files()
 
     def _build_ui(self):
-        main_layout = QVBoxLayout(self)
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        scroll_area.setWidget(content)
+
+        main_layout = QVBoxLayout(content)
         main_layout.setContentsMargins(32, 24, 32, 24)
         main_layout.setSpacing(20)
 
         header = QHBoxLayout()
-        title = SectionTitle("游戏日志")
+        title = SectionTitle("日志")
         header.addWidget(title)
         header.addStretch()
         main_layout.addLayout(header)
 
-        sub = SubTitle("查看和导出 Minecraft 游戏日志")
+        sub = SubTitle("看日志、导日志")
         main_layout.addWidget(sub)
 
-        card = Card()
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(12)
+        block_label = QLabel("日志文件")
+        block_label.setFont(QFont("", 13, QFont.Bold))
+        main_layout.addWidget(block_label)
+
+        block = QFrame()
+        block.setObjectName("card")
+        block.setFrameShape(QFrame.StyledPanel)
+        block_layout = QVBoxLayout(block)
+        block_layout.setSpacing(12)
 
         top_row = QHBoxLayout()
         self.file_combo = QComboBox()
-        self.file_combo.setMinimumHeight(32)
+        self.file_combo.setMinimumHeight(34)
         self.file_combo.currentIndexChanged.connect(self._load_selected_log)
-        top_row.addWidget(self.file_combo)
+        top_row.addWidget(self.file_combo, 1)
 
-        self.refresh_btn = QPushButton("刷新列表")
+        self.refresh_btn = QPushButton("刷一下")
         self.refresh_btn.setObjectName("btnSecondary")
-        self.refresh_btn.setMinimumHeight(32)
+        self.refresh_btn.setMinimumHeight(34)
         self.refresh_btn.clicked.connect(self._scan_log_files)
         top_row.addWidget(self.refresh_btn)
 
-        top_row.addStretch()
-        card_layout.addLayout(top_row)
+        block_layout.addLayout(top_row)
 
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
@@ -62,26 +74,33 @@ class LogPage(QWidget):
         font.setFamily("Consolas")
         font.setPointSize(10)
         self.log_text.setFont(font)
-        card_layout.addWidget(self.log_text)
+        block_layout.addWidget(self.log_text)
 
         btn_row = QHBoxLayout()
-        self.clear_btn = QPushButton("清空日志")
+        self.clear_btn = QPushButton("清掉")
         self.clear_btn.setObjectName("btnSecondary")
         self.clear_btn.clicked.connect(self._clear_log)
         btn_row.addWidget(self.clear_btn)
-        self.copy_btn = QPushButton("复制日志")
+
+        self.copy_btn = QPushButton("复制")
         self.copy_btn.setObjectName("btnSecondary")
         self.copy_btn.clicked.connect(self._copy_log)
         btn_row.addWidget(self.copy_btn)
-        self.export_btn = QPushButton("导出日志")
+
+        self.export_btn = QPushButton("导出来")
         self.export_btn.setObjectName("btnSecondary")
         self.export_btn.clicked.connect(self._export_log)
         btn_row.addWidget(self.export_btn)
-        btn_row.addStretch()
-        card_layout.addLayout(btn_row)
 
-        main_layout.addWidget(card)
+        btn_row.addStretch()
+        block_layout.addLayout(btn_row)
+
+        main_layout.addWidget(block)
         main_layout.addStretch()
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll_area)
 
     def _scan_log_files(self):
         self.file_combo.clear()
@@ -125,7 +144,7 @@ class LogPage(QWidget):
             scrollbar = self.log_text.verticalScrollBar()
             scrollbar.setValue(scrollbar.maximum())
         except Exception as e:
-            self.log_text.setPlainText(f"读取日志失败: {e}")
+            self.log_text.setPlainText(f"读日志扑了: {e}")
 
     def _clear_log(self):
         self.log_text.clear()
@@ -137,7 +156,7 @@ class LogPage(QWidget):
     def _export_log(self):
         log_text = self.log_text.toPlainText()
         if not log_text:
-            QMessageBox.warning(self, "提示", "日志为空")
+            QMessageBox.warning(self, "提示", "空的，导啥")
             return
 
         default_path = os.path.join(
@@ -145,10 +164,10 @@ class LogPage(QWidget):
             f"minecraft_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         )
         selected, _ = QFileDialog.getSaveFileName(
-            self, "保存日志", default_path,
+            self, "存日志", default_path,
             "文本文件 (*.txt);;所有文件 (*)"
         )
         if selected:
             with open(selected, "w", encoding="utf-8") as f:
                 f.write(log_text)
-            QMessageBox.information(self, "导出成功", f"日志已保存到:\n{selected}")
+            QMessageBox.information(self, "好了", f"存这了:\n{selected}")
