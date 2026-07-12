@@ -1,5 +1,8 @@
 # 更新日志 (Changelog)
 
+> Gitee 为主开发仓库，GitHub 为自动同步只读镜像，完整开发历史以 Gitee 仓库记录为准
+> Gitee is the main development repository, GitHub is an automatically synchronized read-only mirror. Full development history is recorded in the Gitee repository.
+
 按日期记录项目重要变更。
 
 ---

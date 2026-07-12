@@ -4,7 +4,7 @@ LANG = "zh"
 
 TRANSLATIONS = {
     "app_title": {"zh": "MCOpen", "en": "MCOpen"},
-    "version": {"zh": "3", "en": "v1.4.3"},
+    "version": {"zh": "v1.4.3", "en": "v1.4.3"},
     "footer": {"zh": "MCOpen 启动内核", "en": "MCOpen Launcher Core"},
 
     "nav_home": {"zh": "启动", "en": "Launch"},
