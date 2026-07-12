@@ -1,18 +1,23 @@
 # MCOpen(MCO)
 ## Important Repository Statement
-Gitee is the primary official development repository with complete original commit history.
-This GitHub repository is only a read-only automatic mirror synchronized from Gitee.
-This is an independent third-party Minecraft Java Edition launcher, **not affiliated with Mojang AB or Microsoft Corporation**.
-This project is open-source under the GNU GPL v3.0 license, see the LICENSE file for details.
-This software is only available to users who own a legitimate Minecraft Java Edition account.
+This is an independent open-source desktop launcher for Minecraft Java Edition, released under the GNU GPL v3.0 license.
+It is not created, endorsed, or affiliated with Mojang AB or Microsoft Corporation.
 
+- Primary mode: Official Xbox authentication for users with valid legitimate Minecraft Java Edition accounts
+- Offline mode: Only for local single-player gameplay, used solely by users who already own official Minecraft accounts. It cannot bypass official authentication on public servers.
+- This project fully complies with the Minecraft EULA and official usage guidelines. No global authentication bypass or public server crack functionality is included.
+- The main repository is hosted on Gitee; this GitHub repository is a read-only mirror.
+
+---
 ---
 ## 仓库重要说明
 Gitee 为本项目唯一主线开发仓库，保存完整原始提交开发记录。
 GitHub 仓库仅为从 Gitee 自动同步的只读镜像仓库。
+
 本项目是独立第三方 Minecraft Java 版启动器，**与 Mojang、Microsoft 无官方隶属关系**。
 项目采用 GNU GPL v3.0 开源协议，完整条款详见 LICENSE 文件。
 本软件仅供持有正版 Minecraft Java 账号的用户使用。
+离线模式仅用于本地单人单机游玩，不可用于绕过公共服务器正版验证。
 
 ## 开发说明
 本项目2026年6月由核心开发者 Bohh 独立开发底层内核完成前期预研，7月组建四人开发团队协同开发；整体底层架构、四层分层设计、接口规范、核心业务逻辑均由团队独立设计落地。
